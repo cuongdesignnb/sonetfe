@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:0.08" />
+      <stop offset="100%" style="stop-color:#ef4444;stop-opacity:0.08" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" fill="url(#bg)"/>
+  <rect x="320" y="150" width="160" height="160" rx="24" fill="#f97316" opacity="0.18"/>
+  <path d="M360 210 L360 270 L435 240 Z" fill="#f97316" opacity="0.5"/>
+  <text x="400" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#9ca3af">Danh mục</text>
+</svg>

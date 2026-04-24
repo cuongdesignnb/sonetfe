@@ -1,0 +1,129 @@
+"use client";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Sparkles, CheckCircle } from "lucide-react";
+import { motion } from "framer-motion";
+import { useSiteSettings } from "@/hooks/use-site-settings";
+
+const benefits = [
+  "Truy cập không giới hạn tất cả khóa học",
+  "Học mọi lúc, mọi nơi trên mọi thiết bị",
+  "Chứng chỉ hoàn thành được công nhận",
+  "Hỗ trợ 24/7 từ đội ngũ chuyên gia",
+];
+
+export function CTASection() {
+  const settings = useSiteSettings();
+  const cta = settings.home.cta;
+
+  return (
+    <section className="py-24 relative overflow-hidden">
+      {/* Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950" />
+      
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-red-500/20 rounded-full blur-3xl animate-pulse delay-700" />
+      </div>
+
+      {/* Grid Pattern */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]" />
+
+      <div className="container relative z-10">
+        <motion.div
+          className="max-w-4xl mx-auto text-center"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+        >
+          {/* Badge */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
+          >
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 text-white/90 text-sm font-medium backdrop-blur-sm border border-white/20 mb-8">
+              <Sparkles className="w-4 h-4 text-yellow-400" />
+              Bắt đầu miễn phí ngay hôm nay
+            </span>
+          </motion.div>
+
+          {/* Heading */}
+          <h2 className="text-3xl md:text-5xl font-bold text-white mb-6 leading-tight">
+            {cta.title_prefix}{" "}
+            <span className="bg-gradient-to-r from-orange-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
+              {cta.title_highlight}
+            </span>{" "}
+            {cta.title_suffix}
+          </h2>
+
+          <div
+            className="rich-text text-lg md:text-xl text-gray-300 mb-10 max-w-2xl mx-auto leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: cta.subtitle || "" }}
+          />
+
+          {/* Benefits */}
+          <motion.div
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto mb-10"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
+          >
+            {benefits.map((benefit, index) => (
+              <div key={index} className="flex items-center gap-3 text-left">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center">
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                </div>
+                <span className="text-gray-300 text-sm">{benefit}</span>
+              </div>
+            ))}
+          </motion.div>
+
+          {/* CTA Buttons */}
+          <motion.div
+            className="flex flex-col sm:flex-row gap-4 justify-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.6 }}
+          >
+            <Button
+              size="lg"
+              className="text-lg px-10 py-7 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 border-0 shadow-lg shadow-orange-500/25 group"
+              asChild
+            >
+              <Link href="/auth/register">
+                {cta.primary_cta}
+                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </Button>
+
+            <Button
+              size="lg"
+              variant="outline"
+              className="text-lg px-10 py-7 bg-white/5 border-white/20 text-white hover:bg-white/10 hover:border-white/30 backdrop-blur-sm"
+              asChild
+            >
+              <Link href="/courses">{cta.secondary_cta}</Link>
+            </Button>
+          </motion.div>
+
+          {/* Trust Note */}
+          <motion.p
+            className="mt-8 text-sm text-gray-500"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.8 }}
+          >
+            Không cần thẻ tín dụng • Hủy bất cứ lúc nào • Hoàn tiền trong 7 ngày
+          </motion.p>
+        </motion.div>
+      </div>
+    </section>
+  );
+}

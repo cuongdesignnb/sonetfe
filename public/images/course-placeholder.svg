@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#ef4444;stop-opacity:0.1" />
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <rect x="260" y="120" width="120" height="120" rx="20" fill="#f97316" opacity="0.2"/>
+  <path d="M290 165 L290 215 L345 190 Z" fill="#f97316" opacity="0.5"/>
+  <text x="320" y="280" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Khóa học</text>
+</svg>

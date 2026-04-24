@@ -1,0 +1,289 @@
+"use client";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ArrowRight, Play, Sparkles, Star, Users, BookOpen, Zap } from "lucide-react";
+import { motion } from "framer-motion";
+import { useSiteSettings } from "@/hooks/use-site-settings";
+
+export function HeroSection() {
+  const settings = useSiteSettings();
+  const hero = settings.home.hero;
+
+  return (
+    <section className="relative min-h-[90vh] flex items-center overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+        {/* Gradient Orbs */}
+        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-orange-500/30 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-red-500/30 rounded-full blur-3xl animate-pulse delay-1000" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-orange-600/20 rounded-full blur-3xl" />
+        
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]" />
+        
+        {/* Floating Particles */}
+        {[...Array(20)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-1 h-1 bg-white/30 rounded-full"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+            }}
+            animate={{
+              y: [0, -30, 0],
+              opacity: [0.3, 0.8, 0.3],
+            }}
+            transition={{
+              duration: 3 + Math.random() * 2,
+              repeat: Infinity,
+              delay: Math.random() * 2,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="container relative z-10">
+        <div className="flex flex-col lg:flex-row items-center gap-16">
+          {/* Left side - Content */}
+          <motion.div
+            className="flex-1 space-y-8 text-center lg:text-left"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            {/* Badge */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+            >
+              <Badge className="px-4 py-2 bg-white/10 text-white border-white/20 backdrop-blur-sm hover:bg-white/20 transition-colors">
+                <Sparkles className="w-4 h-4 mr-2 text-yellow-400" />
+                {hero.badge}
+              </Badge>
+            </motion.div>
+
+            {/* Heading */}
+            <div className="space-y-4">
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-[1.1] tracking-tight">
+                {hero.title_prefix}
+                <span className="relative mx-3">
+                  <span className="relative z-10 bg-gradient-to-r from-orange-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
+                    {hero.title_highlight}
+                  </span>
+                  <motion.span
+                    className="absolute -bottom-2 left-0 right-0 h-3 bg-gradient-to-r from-orange-500/50 to-red-500/50 blur-sm"
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: 1 }}
+                    transition={{ delay: 0.5, duration: 0.6 }}
+                  />
+                </span>
+                <br />
+                {hero.title_suffix}
+              </h1>
+              <div
+                className="rich-text text-lg md:text-xl text-gray-300 leading-relaxed max-w-xl mx-auto lg:mx-0"
+                dangerouslySetInnerHTML={{ __html: hero.subtitle || "" }}
+              />
+            </div>
+
+            {/* CTA Buttons */}
+            <motion.div
+              className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <Button
+                size="lg"
+                className="text-lg px-8 py-7 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 border-0 shadow-lg shadow-orange-500/25 group"
+                asChild
+              >
+                <Link href="/courses">
+                  {hero.primary_cta}
+                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                className="text-lg px-8 py-7 bg-white/5 border-white/20 text-white hover:bg-white/10 hover:border-white/30 backdrop-blur-sm group"
+                asChild
+              >
+                <Link href="#demo">
+                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center mr-3 group-hover:bg-white/20 transition-colors">
+                    <Play className="h-4 w-4 ml-0.5" />
+                  </div>
+                  {hero.secondary_cta}
+                </Link>
+              </Button>
+            </motion.div>
+
+            {/* Social Proof */}
+            <motion.div
+              className="flex flex-col sm:flex-row items-center gap-6 pt-4 justify-center lg:justify-start"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6 }}
+            >
+              {/* Avatar Stack */}
+              <div className="flex items-center">
+                <div className="flex -space-x-3">
+                  {[...Array(4)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-red-500 border-2 border-slate-950 flex items-center justify-center text-white text-xs font-medium"
+                    >
+                      {String.fromCharCode(65 + i)}
+                    </div>
+                  ))}
+                </div>
+                <div className="ml-3 flex flex-col">
+                  <div className="flex items-center gap-1">
+                    {[...Array(5)].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    ))}
+                  </div>
+                  <span className="text-sm text-gray-400">
+                    <span className="text-white font-semibold">50,000+</span> học viên
+                  </span>
+                </div>
+              </div>
+
+              <div className="hidden sm:block w-px h-10 bg-white/20" />
+
+              <div className="flex items-center gap-6 text-sm text-gray-400">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-orange-400" />
+                  <span><span className="text-white font-semibold">1,000+</span> khóa học</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-yellow-400" />
+                  <span><span className="text-white font-semibold">4.9</span> đánh giá</span>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+
+          {/* Right side - Visual */}
+          <motion.div
+            className="flex-1 relative"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+          >
+            {/* Main Card */}
+            <div className="relative">
+              <div className="aspect-[4/3] rounded-3xl overflow-hidden bg-gradient-to-br from-orange-600/20 to-red-600/20 border border-white/10 backdrop-blur-sm shadow-2xl">
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-800/50 to-slate-900/50" />
+                
+                {/* Course Preview Card */}
+                <div className="absolute inset-4 md:inset-8 bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl overflow-hidden border border-white/10">
+                  <div className="aspect-video bg-gradient-to-br from-orange-900/50 to-red-900/50 relative">
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <motion.div
+                        className="w-20 h-20 rounded-full bg-white/90 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform shadow-lg"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        <Play className="h-8 w-8 text-orange-600 ml-1" />
+                      </motion.div>
+                    </div>
+                    <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center">
+                      <Badge className="bg-black/50 text-white border-0 backdrop-blur-sm">
+                        React & NextJS
+                      </Badge>
+                      <span className="text-white/80 text-sm bg-black/50 px-3 py-1 rounded-full backdrop-blur-sm">
+                        2:30:45
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-4 md:p-6">
+                    <h3 className="text-white font-semibold text-lg mb-2">
+                      React + Next.js: Xây dựng website hiện đại
+                    </h3>
+                    <div className="flex items-center gap-4 text-sm text-gray-400">
+                      <div className="flex items-center gap-1">
+                        <Users className="w-4 h-4" />
+                        <span>2,345 học viên</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                        <span>4.9</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Floating Elements */}
+              <motion.div
+                className="absolute -top-6 -left-6 bg-white rounded-2xl shadow-2xl p-4 border border-gray-100"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.8 }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900 text-sm">Hoàn thành!</div>
+                    <div className="text-xs text-gray-500">Bài học 12/15</div>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                className="absolute -bottom-4 -right-4 bg-white rounded-2xl shadow-2xl p-4 border border-gray-100"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1 }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center">
+                    <Award className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900 text-sm">Chứng chỉ</div>
+                    <div className="text-xs text-gray-500">Được công nhận</div>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                className="absolute top-1/2 -right-8 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full px-4 py-2 shadow-lg"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 1.2 }}
+              >
+                <span className="text-white font-semibold text-sm flex items-center gap-1">
+                  <Zap className="w-4 h-4" />
+                  Nổi bật 🔥
+                </span>
+              </motion.div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Bottom Gradient Fade */}
+      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-white dark:from-slate-950 to-transparent" />
+    </section>
+  );
+}
+
+// Award icon component
+function Award({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+    </svg>
+  );
+}
