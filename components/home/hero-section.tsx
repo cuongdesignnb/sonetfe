@@ -142,11 +142,11 @@ export function HeroSection() {
           transition={{ duration: 0.6 }}
         >
           {/* Main Heading — all red, bold */}
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.5rem] font-bold mb-8 tracking-wide">
-            <span className="text-red-600 block leading-snug mb-2 md:mb-3">
-              {hero.title_prefix || "Học Marketing Thực Chiến"}
+          <h1 className="font-bold mb-8 uppercase" style={{ fontSize: 'clamp(1.2rem, 4.8vw, 3.5rem)', lineHeight: 1.25, letterSpacing: '0.02em' }}>
+            <span className="text-red-600 block mb-1 md:mb-3">
+              {hero.title_prefix || "Học Affiliate Thực Chiến"}
             </span>
-            <span className="text-red-600 block leading-snug">
+            <span className="text-red-600 block">
               {hero.title_suffix || "Từ Chuyên Gia Hàng Đầu"}
             </span>
           </h1>

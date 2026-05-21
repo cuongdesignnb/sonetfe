@@ -18,14 +18,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatPrice } from "@/lib/utils";
-import type { CourseData, MarketingUrgency } from "./types";
+import type { CourseData, MarketingUrgency, CourseDurationTier } from "./types";
 
 /* ────────── Types ────────── */
 
 export type RegistrationSectionProps = {
   course: CourseData;
   isEnrolled?: boolean;
-  onRegisterSuccess?: () => void;
+  onRegisterSuccess?: (tierId?: number) => void;
   onLearnClick?: () => void;
   voucherCode?: string;
   onVoucherCodeChange?: (code: string) => void;
@@ -42,6 +42,8 @@ export type RegistrationSectionProps = {
   onRemoveVoucher?: () => void;
   voucherLoading?: boolean;
   voucherError?: string | null;
+  selectedTierId?: number | null;
+  onTierSelect?: (tierId: number) => void;
 };
 
 type NoticeCard = {
@@ -129,6 +131,8 @@ export function RegistrationSection({
   onRemoveVoucher,
   voucherLoading,
   voucherError,
+  selectedTierId: externalTierId,
+  onTierSelect,
 }: RegistrationSectionProps) {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, amount: 0.15 });
@@ -152,8 +156,27 @@ export function RegistrationSection({
   const marketing = course.marketing;
   const urgency: MarketingUrgency | undefined = marketing?.urgency;
 
+  // Duration tiers
+  const hasTiers = (course.duration_tiers?.length ?? 0) > 0;
+  const activeTiers = (course.duration_tiers ?? []).filter(t => t.is_active);
+  const defaultTier = activeTiers.find(t => t.is_default) ?? activeTiers[0];
+  const [internalTierId, setInternalTierId] = useState<number | null>(
+    externalTierId ?? defaultTier?.id ?? null
+  );
+  const currentTierId = externalTierId ?? internalTierId;
+  const currentTier = activeTiers.find(t => t.id === currentTierId);
+  const displayPrice = currentTier ? Number(currentTier.price) : price;
+  const displayOriginalPrice = currentTier ? (Number(currentTier.original_price) || null) : (Number(course.original_price) || null);
+
+  function handleTierSelect(tierId: number) {
+    setInternalTierId(tierId);
+    onTierSelect?.(tierId);
+  }
+
   const title = "Đăng ký ngay để nhận ưu đãi";
-  const subtitle = `Chỉ còn ${urgency?.remaining_spots ?? 20} suất cuối với giá ưu đãi ${formatPrice(price)}`;
+  const subtitle = hasTiers
+    ? `Chọn gói thời gian phù hợp với bạn`
+    : `Chỉ còn ${urgency?.remaining_spots ?? 20} suất cuối với giá ưu đãi ${formatPrice(displayPrice)}`;
 
   /* ── Notices ── */
   const notices: NoticeCard[] = [
@@ -277,17 +300,89 @@ export function RegistrationSection({
 
             {/* Price */}
             <div className="mb-1 text-center">
+              {displayOriginalPrice && displayOriginalPrice > displayPrice ? (
+                <div className="mb-1">
+                  <span className="text-lg text-gray-500 line-through">
+                    {formatPrice(displayOriginalPrice)}
+                  </span>
+                </div>
+              ) : null}
               <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-300 bg-clip-text text-4xl font-black text-transparent sm:text-5xl">
-                {formatPrice(price)}
+                {formatPrice(displayPrice)}
               </span>
+              {currentTier && (
+                <div className="mt-1 text-sm text-gray-400">
+                  {currentTier.duration_days ? currentTier.label : 'Truy cập vĩnh viễn'}
+                </div>
+              )}
             </div>
 
+            {/* Tier selection cards */}
+            {hasTiers && activeTiers.length > 1 && (
+              <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {activeTiers.map((tier) => {
+                  const isSelected = currentTierId === tier.id;
+                  const isPopular = tier.is_default;
+                  return (
+                    <button
+                      key={tier.id}
+                      type="button"
+                      onClick={() => handleTierSelect(tier.id)}
+                      className={`relative rounded-xl border-2 p-4 text-left transition-all ${
+                        isSelected
+                          ? 'border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/10'
+                          : 'border-white/10 bg-white/[0.03] hover:border-white/20'
+                      }`}
+                    >
+                      {isPopular && (
+                        <span className="absolute -top-2.5 right-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                          Phổ biến
+                        </span>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className={`font-semibold ${isSelected ? 'text-orange-400' : 'text-white'}`}>
+                            {tier.label}
+                          </p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {tier.duration_days ? `${tier.duration_days} ngày truy cập` : 'Truy cập vĩnh viễn'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          {tier.original_price && Number(tier.original_price) > Number(tier.price) && (
+                            <p className="text-xs text-gray-500 line-through">
+                              {formatPrice(Number(tier.original_price))}
+                            </p>
+                          )}
+                          <p className={`text-lg font-bold ${isSelected ? 'text-orange-400' : 'text-white'}`}>
+                            {formatPrice(Number(tier.price))}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Selection indicator */}
+                      <div className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 rounded-full border-2 ${
+                        isSelected
+                          ? 'border-orange-500 bg-orange-500'
+                          : 'border-gray-600'
+                      }`}>
+                        {isSelected && (
+                          <div className="absolute inset-1 rounded-full bg-white" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* "Today only" badge */}
-            <div className="mb-6 flex justify-center">
-              <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-400 ring-1 ring-red-500/20">
-                ⏰ Chỉ hôm nay
-              </span>
-            </div>
+            {!hasTiers && (
+              <div className="mb-6 flex justify-center">
+                <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-400 ring-1 ring-red-500/20">
+                  ⏰ Chỉ hôm nay
+                </span>
+              </div>
+            )}
 
             {course.status === "coming_soon" ? (
               /* ── Coming Soon view ── */
@@ -454,7 +549,7 @@ export function RegistrationSection({
                 {/* Checkout button */}
                 <button
                   type="button"
-                  onClick={() => onRegisterSuccess?.()}
+                  onClick={() => onRegisterSuccess?.(currentTierId ?? undefined)}
                   className="w-full rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 px-6 py-4 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-orange-500/30 active:scale-[0.98]"
                 >
                   <Zap className="mr-2 inline-block h-5 w-5" />

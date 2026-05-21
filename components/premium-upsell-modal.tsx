@@ -9,6 +9,7 @@ interface PremiumUpsellModalProps {
   lessonTitle?: string;
   courseTitle?: string;
   coursePrice?: number;
+  priceRange?: [number, number];
   courseSlug?: string;
   courseId?: string | number;
   isLoggedIn?: boolean;
@@ -21,6 +22,7 @@ export function PremiumUpsellModal({
   onClose,
   lessonTitle,
   coursePrice = 0,
+  priceRange,
   courseSlug,
   courseId,
   totalLessons,
@@ -104,7 +106,11 @@ export function PremiumUpsellModal({
             className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-bold text-base bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-lg shadow-orange-500/30 transition-all hover:shadow-orange-500/50 hover:scale-[1.02] active:scale-[0.98]"
           >
             🔥 Đăng ký ngay
-            {coursePrice > 0 && <span>– Chỉ {formatPrice(coursePrice)}</span>}
+            {priceRange && priceRange[0] !== priceRange[1] ? (
+              <span>– Từ {formatPrice(priceRange[0])}</span>
+            ) : coursePrice > 0 ? (
+              <span>– Chỉ {formatPrice(coursePrice)}</span>
+            ) : null}
           </a>
         </div>
 

@@ -68,14 +68,45 @@ export function FloatingBar({
 
             {/* Center: price + enrolled */}
             <div className="flex flex-1 items-center justify-center gap-3 sm:gap-4">
-              {/* Strikethrough price */}
-              <span className="text-sm text-gray-500 line-through">
-                {formatPrice(price)}
-              </span>
-              {/* Current price */}
-              <span className="text-lg font-black text-white sm:text-xl">
-                {formatPrice(price)}
-              </span>
+              {/* Price display - tier-aware */}
+              {course.duration_tiers && course.duration_tiers.length > 0 ? (
+                <>
+                  {(() => {
+                    const prices = course.duration_tiers.map((t) => Number(t.price));
+                    const minPrice = Math.min(...prices);
+                    const maxPrice = Math.max(...prices);
+                    const origPrices = course.duration_tiers
+                      .filter((t) => t.original_price)
+                      .map((t) => Number(t.original_price));
+                    const maxOriginal = origPrices.length > 0 ? Math.max(...origPrices) : 0;
+                    return (
+                      <>
+                        {maxOriginal > maxPrice && (
+                          <span className="text-sm text-gray-500 line-through">
+                            {formatPrice(maxOriginal)}
+                          </span>
+                        )}
+                        <span className="text-lg font-black text-white sm:text-xl">
+                          {minPrice === maxPrice
+                            ? formatPrice(minPrice)
+                            : `Từ ${formatPrice(minPrice)}`}
+                        </span>
+                      </>
+                    );
+                  })()}
+                </>
+              ) : (
+                <>
+                  {course.original_price && Number(course.original_price) > price && (
+                    <span className="text-sm text-gray-500 line-through">
+                      {formatPrice(Number(course.original_price))}
+                    </span>
+                  )}
+                  <span className="text-lg font-black text-white sm:text-xl">
+                    {price > 0 ? formatPrice(price) : "Miễn phí"}
+                  </span>
+                </>
+              )}
               {/* Enrolled count */}
               <span className="hidden text-sm text-gray-400 lg:inline">
                 {enrolledCount.toLocaleString("vi-VN")}+ học viên đã đăng ký

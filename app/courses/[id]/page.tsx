@@ -114,6 +114,9 @@ export default function CourseDetailPage() {
     final_amount: number;
   } | null>(null);
 
+  // Selected duration tier
+  const [selectedTierId, setSelectedTierId] = useState<number | null>(null);
+
   // Fetch course data
   useEffect(() => {
     let cancelled = false;
@@ -272,6 +275,7 @@ export default function CourseDetailPage() {
         },
         body: JSON.stringify({
           voucher_code: appliedVoucher?.code || null,
+          duration_tier_id: selectedTierId || null,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -348,7 +352,10 @@ export default function CourseDetailPage() {
       <RegistrationSection
         course={c as CourseData}
         isEnrolled={data.is_enrolled}
-        onRegisterSuccess={() => handleCheckout()}
+        onRegisterSuccess={(tierId) => {
+          if (tierId) setSelectedTierId(tierId);
+          handleCheckout();
+        }}
         onLearnClick={() =>
           router.push(`/courses/${c.slug || params.id}/learn`)
         }
@@ -359,6 +366,8 @@ export default function CourseDetailPage() {
         onRemoveVoucher={handleRemoveVoucher}
         voucherLoading={voucherLoading}
         voucherError={voucherError}
+        selectedTierId={selectedTierId}
+        onTierSelect={setSelectedTierId}
       />
 
       <TestimonialsSection course={c as CourseData} />

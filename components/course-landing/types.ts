@@ -263,6 +263,19 @@ export type CourseMarketing = {
   ticker_texts?: string[];
 };
 
+/* ── Duration tier for time-based pricing ────────────────── */
+
+export type CourseDurationTier = {
+  id: number;
+  label: string;
+  duration_days: number | null; // null = lifetime
+  price: string | number;
+  original_price: string | number | null;
+  is_default: boolean;
+  is_active: boolean;
+  sort_order: number;
+};
+
 /* ── Course detail API response ──────────────────────────── */
 
 export type CourseData = {
@@ -285,11 +298,14 @@ export type CourseData = {
   faqs?: CourseFaq[];
   reviews?: CourseReview[];
   marketing?: CourseMarketing;
+  duration_tiers?: CourseDurationTier[];
+  original_price?: string | number | null;
 };
 
 export type CourseDetailResponse = {
   course: CourseData;
   is_enrolled: boolean;
+  price_range?: [number, number];
 };
 
 /* ── Default nav items (auto-detected from rendered sections) */

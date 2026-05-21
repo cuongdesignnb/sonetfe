@@ -29,6 +29,8 @@ import {
   Flame,
   User,
   Settings,
+  AlertTriangle,
+  Shield,
 } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
@@ -60,6 +62,12 @@ interface Enrollment {
   total_lessons?: number;
   completed_lessons?: number;
   watched_duration?: number;
+  // Duration tier info
+  is_expired?: boolean;
+  is_lifetime?: boolean;
+  days_remaining?: number | null;
+  tier_label?: string | null;
+  expires_at?: string | null;
 }
 
 const MotionCard = motion(Card);
@@ -375,11 +383,29 @@ export default function DashboardPage() {
                         <Trophy className="h-3 w-3 mr-1" />
                         Hoàn thành
                       </Badge>
+                    ) : enrollment.is_expired ? (
+                      <Badge className="absolute top-3 right-3 bg-red-600 text-white border-0">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Hết hạn
+                      </Badge>
                     ) : enrollment.progress > 0 ? (
                       <Badge className="absolute top-3 right-3 bg-orange-500 text-white border-0">
                         {enrollment.progress}%
                       </Badge>
                     ) : null}
+
+                    {/* Duration tier badge */}
+                    {!enrollment.is_expired && enrollment.tier_label && (
+                      <Badge className="absolute top-3 left-3 bg-blue-600/90 text-white border-0 text-[10px]">
+                        <Shield className="h-3 w-3 mr-1" />
+                        {enrollment.is_lifetime
+                          ? 'Vĩnh viễn'
+                          : enrollment.days_remaining != null && enrollment.days_remaining <= 7
+                            ? `Còn ${enrollment.days_remaining} ngày`
+                            : enrollment.tier_label
+                        }
+                      </Badge>
+                    )}
                   </div>
 
                   <CardHeader className="pb-2">
@@ -424,16 +450,27 @@ export default function DashboardPage() {
                     </div>
 
                     {/* CTA Button */}
-                    <Button asChild className="w-full group/btn">
-                      <Link
-                        href={`/courses/${enrollment.course.slug || enrollment.course.id}/learn`}
-                      >
-                        <Play className="mr-2 h-4 w-4 group-hover/btn:animate-pulse" />
-                        {enrollment.progress > 0
-                          ? "Tiếp tục học"
-                          : "Bắt đầu học"}
-                      </Link>
-                    </Button>
+                    {enrollment.is_expired ? (
+                      <Button asChild className="w-full bg-red-600 hover:bg-red-700">
+                        <Link
+                          href={`/courses/${enrollment.course.slug || enrollment.course.id}`}
+                        >
+                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          Gia hạn khóa học
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button asChild className="w-full group/btn">
+                        <Link
+                          href={`/courses/${enrollment.course.slug || enrollment.course.id}/learn`}
+                        >
+                          <Play className="mr-2 h-4 w-4 group-hover/btn:animate-pulse" />
+                          {enrollment.progress > 0
+                            ? "Tiếp tục học"
+                            : "Bắt đầu học"}
+                        </Link>
+                      </Button>
+                    )}
                   </CardContent>
                 </MotionCard>
               ))}
