@@ -292,7 +292,7 @@ function SectionAccordion({
                     instructorName={instructorName}
                     instructorAvatar={instructorAvatar}
                     onWatch={onWatchLesson}
-                    onLockedClick={onLockedClick}
+                    onLockedClick={() => onLockedClick?.(section.id)}
                   />
                 ))}
               </div>
