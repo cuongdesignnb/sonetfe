@@ -117,6 +117,30 @@ export default function CourseDetailPage() {
   // Selected duration tier
   const [selectedTierId, setSelectedTierId] = useState<number | null>(null);
 
+  // Selected section for chapter checkout
+  const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+
+  // Parse section_id from URL search params
+  useEffect(() => {
+    const sectIdParam = searchParams.get("section_id");
+    if (sectIdParam) {
+      const parsed = parseInt(sectIdParam, 10);
+      if (!isNaN(parsed)) {
+        setSelectedSectionId(parsed);
+        // Scroll to pricing after a brief delay
+        setTimeout(() => {
+          const el = document.getElementById("pricing");
+          if (el) el.scrollIntoView({ behavior: "smooth" });
+        }, 500);
+      }
+    }
+  }, [searchParams]);
+
+  // Reset voucher when section changes
+  useEffect(() => {
+    handleRemoveVoucher();
+  }, [selectedSectionId]);
+
   // Fetch course data
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +224,10 @@ export default function CourseDetailPage() {
     (c.marketing as LandingMarketing | undefined)?.landing_nav?.logo_url ||
     null;
 
-  function scrollToPricing() {
+  function scrollToPricing(sectionId?: number) {
+    if (sectionId) {
+      setSelectedSectionId(sectionId);
+    }
     if (data?.is_enrolled) {
       router.push(`/courses/${c.slug || params.id}/learn`);
       return;
@@ -229,6 +256,7 @@ export default function CourseDetailPage() {
         body: JSON.stringify({
           code: voucherCode.trim(),
           course_id: data.course.id,
+          section_id: selectedSectionId || null,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -275,7 +303,8 @@ export default function CourseDetailPage() {
         },
         body: JSON.stringify({
           voucher_code: appliedVoucher?.code || null,
-          duration_tier_id: selectedTierId || null,
+          duration_tier_id: selectedSectionId ? null : (selectedTierId || null),
+          section_id: selectedSectionId || null,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -287,6 +316,13 @@ export default function CourseDetailPage() {
         json?.enrollment ||
         json?.message?.toLowerCase().includes("enrolled")
       ) {
+        // If a specific section was purchased, redirect to learning page instead of setting is_enrolled = true for the whole course
+        if (selectedSectionId) {
+          toast.success("Đăng ký chương lẻ thành công!");
+          router.push(`/courses/${c.slug || params.id}/learn`);
+          return;
+        }
+
         setData((prev) => (prev ? { ...prev, is_enrolled: true } : prev));
         toast.success(
           json?.discount_applied
@@ -368,6 +404,8 @@ export default function CourseDetailPage() {
         voucherError={voucherError}
         selectedTierId={selectedTierId}
         onTierSelect={setSelectedTierId}
+        selectedSectionId={selectedSectionId}
+        onSectionSelect={setSelectedSectionId}
       />
 
       <TestimonialsSection course={c as CourseData} />

@@ -49,6 +49,10 @@ type Section = {
   title: string;
   order: number;
   lessons?: Lesson[];
+  price?: string | number | null;
+  original_price?: string | number | null;
+  is_sellable?: boolean;
+  is_enrolled?: boolean;
 };
 
 type CourseDetailResponse = {
@@ -132,6 +136,7 @@ export default function CourseLearnPage() {
   const [premiumLessonIndex, setPremiumLessonIndex] = useState<number | null>(
     null,
   );
+  const [premiumSection, setPremiumSection] = useState<Section | null>(null);
 
   // Video progress tracking
   const [videoDuration, setVideoDuration] = useState(0);
@@ -541,11 +546,19 @@ export default function CourseLearnPage() {
     setVideoEmbedHtml(null);
     setVideoError(null);
 
+    // Find parent section and check section access
+    const parentSection = sections.find((s) =>
+      s.lessons?.some((l) => l.id === lesson.id)
+    );
+    const sectionIsEnrolled = parentSection?.is_enrolled ?? false;
+    const isLessonAccessible = lesson.is_preview || isEnrolled || sectionIsEnrolled;
+
     // Non-enrolled user trying to watch premium lesson → show upsell
-    if (!lesson.is_preview && !isEnrolled) {
+    if (!isLessonAccessible) {
       const lessonIdx = allLessons.findIndex((l) => l.id === lesson.id);
       setPremiumLessonTitle(lesson.title);
       setPremiumLessonIndex(lessonIdx >= 0 ? lessonIdx : null);
+      setPremiumSection(parentSection || null);
       setShowPremiumModal(true);
       return;
     }
@@ -807,10 +820,16 @@ export default function CourseLearnPage() {
 
                             const canAccess = lesson.is_preview || !!user;
 
+                            const parentSectionForLesson = sections.find((s) =>
+                              s.lessons?.some((l) => l.id === lesson.id)
+                            );
+                            const sectionIsEnrolledForLesson = parentSectionForLesson?.is_enrolled ?? false;
+                            const isLessonAccessible = lesson.is_preview || isEnrolled || sectionIsEnrolledForLesson;
+
                             const handleLessonClick = () => {
                               if (canAccess) {
-                                if (!lesson.is_preview && !isEnrolled) {
-                                  // User is logged in but NOT enrolled → show premium modal
+                                if (!isLessonAccessible) {
+                                  // User is logged in but has no access to this lesson → show premium modal
                                   const lessonIdx = allLessons.findIndex(
                                     (l) => l.id === lesson.id,
                                   );
@@ -818,6 +837,7 @@ export default function CourseLearnPage() {
                                   setPremiumLessonIndex(
                                     lessonIdx >= 0 ? lessonIdx : null,
                                   );
+                                  setPremiumSection(parentSectionForLesson || null);
                                   setShowPremiumModal(true);
                                   return;
                                 }
@@ -831,6 +851,7 @@ export default function CourseLearnPage() {
                                 setPremiumLessonIndex(
                                   lessonIdx >= 0 ? lessonIdx : null,
                                 );
+                                setPremiumSection(parentSectionForLesson || null);
                                 setShowPremiumModal(true);
                               }
                             };
@@ -914,14 +935,19 @@ export default function CourseLearnPage() {
                                     {!lesson.is_preview && (
                                       <Badge
                                         variant="secondary"
-                                        className="h-4 text-[10px] bg-orange-500/20 text-orange-400 border-orange-500/30"
+                                        className={cn(
+                                          "h-4 text-[10px]",
+                                          isLessonAccessible
+                                            ? "bg-green-500/20 text-green-400 border-green-500/30"
+                                            : "bg-orange-500/20 text-orange-400 border-orange-500/30"
+                                        )}
                                       >
-                                        {user ? (
+                                        {isLessonAccessible ? (
                                           "PREMIUM"
                                         ) : (
                                           <span className="flex items-center gap-0.5">
                                             <Lock className="h-2.5 w-2.5" />{" "}
-                                            PAID
+                                            LOCKED
                                           </span>
                                         )}
                                       </Badge>
@@ -991,8 +1017,11 @@ export default function CourseLearnPage() {
                       onEnded={handleVideoEnded}
                     />
                   ) : activeLesson &&
-                    !activeLesson.is_preview &&
-                    !isEnrolled ? (
+                    !(
+                      activeLesson.is_preview ||
+                      isEnrolled ||
+                      (sections.find((s) => s.lessons?.some((l) => l.id === activeLesson.id))?.is_enrolled ?? false)
+                    ) ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6">
                       <div className="flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 mb-4 shadow-lg shadow-orange-500/30">
                         <Lock className="h-8 w-8 text-white" />
@@ -1012,6 +1041,10 @@ export default function CourseLearnPage() {
                           setPremiumLessonIndex(
                             lessonIdx >= 0 ? lessonIdx : null,
                           );
+                          const parentSect = sections.find((s) =>
+                            s.lessons?.some((l) => l.id === activeLesson.id)
+                          );
+                          setPremiumSection(parentSect || null);
                           setShowPremiumModal(true);
                         }}
                         className="px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white shadow-lg shadow-orange-500/30 transition-all hover:scale-105"
@@ -1131,6 +1164,7 @@ export default function CourseLearnPage() {
         isLoggedIn={!!user}
         totalLessons={allLessons.length}
         currentLessonIndex={premiumLessonIndex ?? undefined}
+        section={premiumSection}
       />
     </div>
   );

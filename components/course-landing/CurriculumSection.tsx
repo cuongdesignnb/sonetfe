@@ -14,6 +14,7 @@ import {
   Clock,
 } from "lucide-react";
 import { resolveAssetUrl } from "@/lib/asset-url";
+import { formatPrice } from "@/lib/utils";
 import type { CourseData, Section, Lesson } from "./types";
 
 /* ────────── helpers ────────── */
@@ -202,7 +203,7 @@ function SectionAccordion({
   instructorName?: string;
   instructorAvatar?: string;
   onWatchLesson?: (lesson: Lesson) => void;
-  onLockedClick?: () => void;
+  onLockedClick?: (sectionId: number) => void;
 }) {
   const lessons = section.lessons || [];
   const videoCount = lessons.length;
@@ -230,16 +231,44 @@ function SectionAccordion({
           </p>
         </div>
 
-        {/* Right side: lesson count + toggle */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="hidden sm:inline text-sm text-orange-400 font-medium">
+        {/* Right side: pricing / purchase button + lesson count + toggle */}
+        <div className="flex items-center gap-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          {section.is_sellable && !section.is_enrolled && (
+            <div className="flex items-center gap-3 pr-2 border-r border-white/10">
+              <div className="text-right">
+                {section.original_price && Number(section.original_price) > Number(section.price) && (
+                  <p className="text-[10px] text-gray-500 line-through">
+                    {formatPrice(Number(section.original_price))}
+                  </p>
+                )}
+                <p className="text-sm font-bold text-orange-400">
+                  {formatPrice(Number(section.price))}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onLockedClick?.(section.id)}
+                className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-bold text-white transition-all hover:bg-orange-600 hover:scale-105 active:scale-95"
+              >
+                Mua lẻ
+              </button>
+            </div>
+          )}
+          {section.is_enrolled && (
+            <span className="rounded bg-green-500/10 px-2 py-1 text-xs font-semibold text-green-400 border border-green-500/20">
+              Đã sở hữu
+            </span>
+          )}
+          <span className="hidden sm:inline text-sm text-gray-400 font-medium">
             {videoCount} bài học
           </span>
-          <ChevronDown
-            className={`h-4 w-4 text-gray-500 transition-transform duration-300 ${
-              isExpanded ? "rotate-180" : ""
-            }`}
-          />
+          <div onClick={onToggle} className="p-1 hover:bg-white/5 rounded cursor-pointer">
+            <ChevronDown
+              className={`h-4 w-4 text-gray-500 transition-transform duration-300 ${
+                isExpanded ? "rotate-180" : ""
+              }`}
+            />
+          </div>
         </div>
       </button>
 
@@ -281,7 +310,7 @@ function SectionAccordion({
 
 export interface CurriculumSectionProps {
   course: CourseData;
-  onCtaClick?: () => void;
+  onCtaClick?: (sectionId?: number) => void;
 }
 
 export function CurriculumSection({
@@ -415,7 +444,7 @@ export function CurriculumSection({
                   instructorName={instructorName}
                   instructorAvatar={instructorAvatar}
                   onWatchLesson={handleWatchLesson}
-                  onLockedClick={onCtaClick}
+                  onLockedClick={(sectId) => onCtaClick?.(sectId)}
                 />
               </motion.div>
             ))}

@@ -44,6 +44,8 @@ export type RegistrationSectionProps = {
   voucherError?: string | null;
   selectedTierId?: number | null;
   onTierSelect?: (tierId: number) => void;
+  selectedSectionId?: number | null;
+  onSectionSelect?: (sectionId: number | null) => void;
 };
 
 type NoticeCard = {
@@ -133,6 +135,8 @@ export function RegistrationSection({
   voucherError,
   selectedTierId: externalTierId,
   onTierSelect,
+  selectedSectionId,
+  onSectionSelect,
 }: RegistrationSectionProps) {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, amount: 0.15 });
@@ -165,18 +169,32 @@ export function RegistrationSection({
   );
   const currentTierId = externalTierId ?? internalTierId;
   const currentTier = activeTiers.find(t => t.id === currentTierId);
-  const displayPrice = currentTier ? Number(currentTier.price) : price;
-  const displayOriginalPrice = currentTier ? (Number(currentTier.original_price) || null) : (Number(course.original_price) || null);
+
+  // Chapter lookup
+  const currentSection = course.sections?.find(s => s.id === selectedSectionId);
+
+  const displayPrice = currentSection
+    ? Number(currentSection.price)
+    : (currentTier ? Number(currentTier.price) : price);
+
+  const displayOriginalPrice = currentSection
+    ? (Number(currentSection.original_price) || null)
+    : (currentTier ? (Number(currentTier.original_price) || null) : (Number(course.original_price) || null));
 
   function handleTierSelect(tierId: number) {
     setInternalTierId(tierId);
     onTierSelect?.(tierId);
   }
 
-  const title = "Đăng ký ngay để nhận ưu đãi";
-  const subtitle = hasTiers
-    ? `Chọn gói thời gian phù hợp với bạn`
-    : `Chỉ còn ${urgency?.remaining_spots ?? 20} suất cuối với giá ưu đãi ${formatPrice(displayPrice)}`;
+  const title = currentSection
+    ? `Đăng ký chương lẻ: ${currentSection.title}`
+    : "Đăng ký ngay để nhận ưu đãi";
+
+  const subtitle = currentSection
+    ? `Sở hữu riêng chương học này với đầy đủ nội dung bài học & hỗ trợ.`
+    : (hasTiers
+      ? `Chọn gói thời gian phù hợp với bạn`
+      : `Chỉ còn ${urgency?.remaining_spots ?? 20} suất cuối với giá ưu đãi ${formatPrice(displayPrice)}`);
 
   /* ── Notices ── */
   const notices: NoticeCard[] = [
@@ -310,15 +328,36 @@ export function RegistrationSection({
               <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-300 bg-clip-text text-4xl font-black text-transparent sm:text-5xl">
                 {formatPrice(displayPrice)}
               </span>
-              {currentTier && (
+              {currentTier && !currentSection && (
                 <div className="mt-1 text-sm text-gray-400">
                   {currentTier.duration_days ? currentTier.label : 'Truy cập vĩnh viễn'}
                 </div>
               )}
+              {currentSection && (
+                <div className="mt-1 text-sm text-orange-400 font-semibold">
+                  Mua lẻ chương học
+                </div>
+              )}
             </div>
 
+            {/* Chapter selection notice */}
+            {currentSection && (
+              <div className="mb-6 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4 text-center">
+                <p className="text-sm text-gray-300">
+                  Bạn đang chọn mua lẻ chương: <span className="font-bold text-orange-400">{currentSection.title}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onSectionSelect?.(null)}
+                  className="mt-2 text-xs font-semibold text-orange-400 hover:text-orange-300 underline"
+                >
+                  Thay đổi: Mua trọn gói khóa học
+                </button>
+              </div>
+            )}
+
             {/* Tier selection cards */}
-            {hasTiers && activeTiers.length > 1 && (
+            {!currentSection && hasTiers && activeTiers.length > 1 && (
               <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {activeTiers.map((tier) => {
                   const isSelected = currentTierId === tier.id;
@@ -376,7 +415,7 @@ export function RegistrationSection({
             )}
 
             {/* "Today only" badge */}
-            {!hasTiers && (
+            {!currentSection && !hasTiers && (
               <div className="mb-6 flex justify-center">
                 <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-400 ring-1 ring-red-500/20">
                   ⏰ Chỉ hôm nay
@@ -549,7 +588,7 @@ export function RegistrationSection({
                 {/* Checkout button */}
                 <button
                   type="button"
-                  onClick={() => onRegisterSuccess?.(currentTierId ?? undefined)}
+                  onClick={() => onRegisterSuccess?.(currentSection ? undefined : (currentTierId ?? undefined))}
                   className="w-full rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 px-6 py-4 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-orange-500/30 active:scale-[0.98]"
                 >
                   <Zap className="mr-2 inline-block h-5 w-5" />

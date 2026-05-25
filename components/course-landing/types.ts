@@ -23,6 +23,10 @@ export type Section = {
   title: string;
   order: number;
   lessons?: Lesson[];
+  price?: string | number | null;
+  original_price?: string | number | null;
+  is_sellable?: boolean;
+  is_enrolled?: boolean;
 };
 
 export type CourseFaq = {
