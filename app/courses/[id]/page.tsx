@@ -95,10 +95,8 @@ export default function CourseDetailPage() {
     return DEFAULT_NAV_ITEMS;
   }, [data]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_checkoutError, setCheckoutError] = useState<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   // Voucher state
   const [voucherCode, setVoucherCode] = useState("");
@@ -406,6 +404,8 @@ export default function CourseDetailPage() {
         onTierSelect={setSelectedTierId}
         selectedSectionId={selectedSectionId}
         onSectionSelect={setSelectedSectionId}
+        checkoutError={checkoutError}
+        checkoutLoading={checkoutLoading}
       />
 
       <TestimonialsSection course={c as CourseData} />

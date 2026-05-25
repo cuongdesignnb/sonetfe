@@ -46,6 +46,8 @@ export type RegistrationSectionProps = {
   onTierSelect?: (tierId: number) => void;
   selectedSectionId?: number | null;
   onSectionSelect?: (sectionId: number | null) => void;
+  checkoutError?: string | null;
+  checkoutLoading?: boolean;
 };
 
 type NoticeCard = {
@@ -137,6 +139,8 @@ export function RegistrationSection({
   onTierSelect,
   selectedSectionId,
   onSectionSelect,
+  checkoutError,
+  checkoutLoading,
 }: RegistrationSectionProps) {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, amount: 0.15 });
@@ -585,14 +589,31 @@ export function RegistrationSection({
                   )}
                 </div>
 
+                {/* Checkout Error */}
+                {checkoutError && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+                    {checkoutError}
+                  </div>
+                )}
+
                 {/* Checkout button */}
                 <button
                   type="button"
+                  disabled={checkoutLoading}
                   onClick={() => onRegisterSuccess?.(currentSection ? undefined : (currentTierId ?? undefined))}
-                  className="w-full rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 px-6 py-4 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-orange-500/30 active:scale-[0.98]"
+                  className="w-full rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 px-6 py-4 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-orange-500/30 active:scale-[0.98] disabled:opacity-60"
                 >
-                  <Zap className="mr-2 inline-block h-5 w-5" />
-                  XÁC NHẬN & THANH TOÁN
+                  {checkoutLoading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Đang đăng ký...
+                    </span>
+                  ) : (
+                    <>
+                      <Zap className="mr-2 inline-block h-5 w-5" />
+                      XÁC NHẬN & THANH TOÁN
+                    </>
+                  )}
                 </button>
 
                 {/* Terms */}
