@@ -177,6 +177,7 @@ export function RegistrationSection({
   // Chapter lookup
   const currentSection = course.sections?.find(s => s.id === selectedSectionId);
   const sellableSections = (course.sections ?? []).filter(s => s.is_sellable && !s.is_enrolled);
+  const isSectionEnrolled = !!currentSection?.is_enrolled;
 
   const displayPrice = currentSection
     ? Number(currentSection.price)
@@ -483,13 +484,15 @@ export function RegistrationSection({
                   SẮP DIỄN RA
                 </button>
               </div>
-            ) : isEnrolled ? (
+            ) : (isEnrolled || isSectionEnrolled) ? (
               /* ── Already enrolled view ── */
               <div className="space-y-4 text-center">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
                   <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-green-400" />
                   <p className="font-semibold text-green-400">
-                    Bạn đã đăng ký khóa học thành công!
+                    {isSectionEnrolled 
+                      ? `Bạn đã sở hữu chương: ${currentSection?.title}` 
+                      : "Bạn đã đăng ký khóa học thành công!"}
                   </p>
                   <p className="mt-1 text-sm text-gray-400">
                     Nhấn nút bên dưới để bắt đầu học ngay.
