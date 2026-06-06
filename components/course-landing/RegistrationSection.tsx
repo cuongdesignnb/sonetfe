@@ -176,6 +176,7 @@ export function RegistrationSection({
 
   // Chapter lookup
   const currentSection = course.sections?.find(s => s.id === selectedSectionId);
+  const sellableSections = (course.sections ?? []).filter(s => s.is_sellable && !s.is_enrolled);
 
   const displayPrice = currentSection
     ? Number(currentSection.price)
@@ -344,19 +345,56 @@ export function RegistrationSection({
               )}
             </div>
 
-            {/* Chapter selection notice */}
-            {currentSection && (
-              <div className="mb-6 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4 text-center">
-                <p className="text-sm text-gray-300">
-                  Bạn đang chọn mua lẻ chương: <span className="font-bold text-orange-400">{currentSection.title}</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onSectionSelect?.(null)}
-                  className="mt-2 text-xs font-semibold text-orange-400 hover:text-orange-300 underline"
+            {/* Purchase option selection (Trọn gói vs Mua lẻ chương) */}
+            {sellableSections.length > 0 && (
+              <div className="mb-6">
+                <label className="mb-2 block text-xs font-semibold text-gray-400">
+                  Hình thức đăng ký
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onSectionSelect?.(null)}
+                    className={`rounded-xl border p-3 text-center text-sm font-semibold transition-all ${
+                      !selectedSectionId
+                        ? "border-orange-500 bg-orange-500/10 text-orange-400 shadow-md shadow-orange-500/5"
+                        : "border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:text-white"
+                    }`}
+                  >
+                    Trọn gói khóa học
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSectionSelect?.(sellableSections[0].id)}
+                    className={`rounded-xl border p-3 text-center text-sm font-semibold transition-all ${
+                      selectedSectionId
+                        ? "border-orange-500 bg-orange-500/10 text-orange-400 shadow-md shadow-orange-500/5"
+                        : "border-white/10 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:text-white"
+                    }`}
+                  >
+                    Mua lẻ chương học
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Chapter dropdown selector */}
+            {selectedSectionId && sellableSections.length > 0 && (
+              <div className="mb-6">
+                <label className="mb-2 block text-xs font-semibold text-gray-400">
+                  Chọn chương học muốn mua
+                </label>
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => onSectionSelect?.(Number(e.target.value))}
+                  className="w-full rounded-xl border border-white/10 bg-gray-900 px-4 py-3 text-sm text-white focus:border-orange-500/50 focus:outline-none focus:ring-1 focus:ring-orange-500/30"
                 >
-                  Thay đổi: Mua trọn gói khóa học
-                </button>
+                  {sellableSections.map((sect) => (
+                    <option key={sect.id} value={sect.id} className="bg-gray-950 text-white">
+                      {sect.title} ({formatPrice(Number(sect.price))})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
