@@ -164,7 +164,7 @@ export default function CourseDetailPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id, apiUrl]);
+  }, [params.id, apiUrl, user?.id]);
 
   // Auto-checkout when returning from login with ?checkout=true
   const [autoCheckoutDone, setAutoCheckoutDone] = useState(false);
