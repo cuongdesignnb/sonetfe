@@ -551,7 +551,11 @@ export default function CourseLearnPage() {
       s.lessons?.some((l) => l.id === lesson.id)
     );
     const sectionIsEnrolled = parentSection?.is_enrolled ?? false;
-    const isLessonAccessible = lesson.is_preview || isEnrolled || sectionIsEnrolled;
+    const isLessonAccessible =
+      lesson.is_preview ||
+      isEnrolled ||
+      sectionIsEnrolled ||
+      user?.role === "admin";
 
     // Non-enrolled user trying to watch premium lesson → show upsell
     if (!isLessonAccessible) {
@@ -824,7 +828,11 @@ export default function CourseLearnPage() {
                               s.lessons?.some((l) => l.id === lesson.id)
                             );
                             const sectionIsEnrolledForLesson = parentSectionForLesson?.is_enrolled ?? false;
-                            const isLessonAccessible = lesson.is_preview || isEnrolled || sectionIsEnrolledForLesson;
+                            const isLessonAccessible =
+                              lesson.is_preview ||
+                              isEnrolled ||
+                              sectionIsEnrolledForLesson ||
+                              user?.role === "admin";
 
                             const handleLessonClick = () => {
                               if (canAccess) {
