@@ -20,7 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { VideoPlayer } from "@/components/video-player";
+import {
+  VideoPlayer,
+  type PlaybackEventPayload,
+  type PlaybackSource,
+} from "@/components/video-player";
 import { VideoSecurityError } from "@/components/video-security-error";
 import toast from "react-hot-toast";
 import { resolveAssetUrl } from "@/lib/asset-url";
@@ -82,6 +86,12 @@ type LessonProgress = {
   watched_duration: number;
 };
 
+type LessonPlayback = {
+  primary: PlaybackSource;
+  fallback: PlaybackSource | null;
+  timeoutMs: number;
+};
+
 type CourseProgressResponse = {
   course: CourseDetailResponse["course"];
   lessons_progress: LessonProgress[];
@@ -121,6 +131,9 @@ export default function CourseLearnPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoPlayback, setVideoPlayback] = useState<LessonPlayback | null>(null);
+  const [playbackSessionId, setPlaybackSessionId] = useState<string | null>(null);
+  const [initialVideoPosition, setInitialVideoPosition] = useState(0);
   const [videoIsEmbed, setVideoIsEmbed] = useState(false);
   const [videoEmbedHtml, setVideoEmbedHtml] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
@@ -188,9 +201,15 @@ export default function CourseLearnPage() {
               lp.lesson_id === lessonId
                 ? {
                     ...lp,
-                    completion_percentage: completionPercentage,
-                    watched_duration: Math.round(playedSeconds),
-                    completed: completionPercentage >= 80,
+                    completion_percentage: Math.max(
+                      lp.completion_percentage,
+                      completionPercentage,
+                    ),
+                    watched_duration: Math.max(
+                      lp.watched_duration,
+                      Math.round(playedSeconds),
+                    ),
+                    completed: lp.completed || completionPercentage >= 80,
                   }
                 : lp,
             );
@@ -299,6 +318,26 @@ export default function CourseLearnPage() {
       toast.success("Đã hoàn thành bài học!");
     }
   }, [activeLesson, videoDuration, saveProgress, stopProgressTimer]);
+
+  const activeLessonId = activeLesson?.id;
+  const handlePlaybackEvent = useCallback(
+    (event: PlaybackEventPayload) => {
+      if (!activeLessonId || !playbackSessionId) return;
+      fetch(`/api/backend/lessons/${activeLessonId}/video-events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          event: event.event,
+          provider: event.provider,
+          playback_session_id: playbackSessionId,
+          elapsed_ms: event.elapsedMs,
+          error_category: event.errorCategory,
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    },
+    [activeLessonId, playbackSessionId],
+  );
 
   // Save progress when leaving page (tab close / navigate away)
   useEffect(() => {
@@ -473,6 +512,8 @@ export default function CourseLearnPage() {
         "BLOCKED_BROWSER: Trình duyệt có tính năng tải video không được hỗ trợ",
       );
       setVideoUrl(null);
+      setVideoPlayback(null);
+      setPlaybackSessionId(null);
       setVideoEmbedHtml(null);
       setVideoIsEmbed(false);
     };
@@ -521,12 +562,20 @@ export default function CourseLearnPage() {
         videoPlayedSecondsRef.current,
         videoDuration,
       );
-      stopProgressTimer();
     }
+    stopProgressTimer();
 
     // Reset progress tracking for new lesson
-    videoPlayedSecondsRef.current = 0;
-    lastSavedPercentRef.current = 0;
+    const previousProgress = progress?.lessons_progress.find(
+      (item) => item.lesson_id === lesson.id,
+    );
+    const resumeAt = Math.max(0, previousProgress?.watched_duration ?? 0);
+    videoPlayedSecondsRef.current = resumeAt;
+    lastSavedPercentRef.current = Math.max(
+      0,
+      previousProgress?.completion_percentage ?? 0,
+    );
+    setInitialVideoPosition(resumeAt);
     setVideoDuration(0);
 
     if (
@@ -542,6 +591,8 @@ export default function CourseLearnPage() {
 
     setActiveLesson(lesson);
     setVideoUrl(null);
+    setVideoPlayback(null);
+    setPlaybackSessionId(null);
     setVideoIsEmbed(false);
     setVideoEmbedHtml(null);
     setVideoError(null);
@@ -627,6 +678,50 @@ export default function CourseLearnPage() {
             "BLOCKED_BROWSER:" +
               (json?.message || "Trình duyệt không được hỗ trợ"),
           );
+          return;
+        }
+
+        const sourceTypes = ["bunny_embed", "hls_proxy", "direct"] as const;
+        const rawPrimary = json?.primary;
+        if (
+          rawPrimary &&
+          sourceTypes.includes(rawPrimary.type) &&
+          typeof rawPrimary.url === "string" &&
+          rawPrimary.url.length > 0
+        ) {
+          const primary: PlaybackSource = {
+            type: rawPrimary.type,
+            url: rawPrimary.url,
+            ...(typeof rawPrimary.origin === "string"
+              ? { origin: rawPrimary.origin }
+              : {}),
+          };
+          const rawFallback = json?.fallback;
+          const fallback: PlaybackSource | null =
+            json?.failover?.enabled &&
+            rawFallback?.type === "hls_proxy" &&
+            typeof rawFallback.url === "string" &&
+            rawFallback.url.startsWith(`/api/backend/lessons/${lesson.id}/hls?`)
+              ? { type: "hls_proxy", url: rawFallback.url }
+              : null;
+
+          setVideoPlayback({
+            primary,
+            fallback,
+            timeoutMs: Math.max(
+              1000,
+              Math.min(30000, Number(json?.failover?.timeout_ms) || 10000),
+            ),
+          });
+          setPlaybackSessionId(
+            typeof json?.playback_session_id === "string" &&
+              /^[a-f0-9]{16}$/.test(json.playback_session_id)
+              ? json.playback_session_id
+              : null,
+          );
+          setVideoUrl(primary.url);
+          setVideoEmbedHtml(null);
+          setVideoIsEmbed(primary.type === "bunny_embed");
           return;
         }
 
@@ -1016,10 +1111,16 @@ export default function CourseLearnPage() {
                     />
                   ) : videoUrl || videoEmbedHtml ? (
                     <VideoPlayer
+                      key={activeLesson?.id ?? videoUrl ?? "video-player"}
                       url={videoUrl ?? ""}
+                      primary={videoPlayback?.primary}
+                      fallback={videoPlayback?.fallback}
+                      failoverTimeoutMs={videoPlayback?.timeoutMs}
+                      initialPlaybackSeconds={initialVideoPosition}
                       className="h-full w-full"
                       forceEmbed={videoIsEmbed}
                       embedHtml={videoEmbedHtml}
+                      onPlaybackEvent={handlePlaybackEvent}
                       onProgress={handleVideoProgress}
                       onDuration={handleVideoDuration}
                       onEnded={handleVideoEnded}
@@ -1029,7 +1130,7 @@ export default function CourseLearnPage() {
                       activeLesson.is_preview ||
                       isEnrolled ||
                       (sections.find((s) => s.lessons?.some((l) => l.id === activeLesson.id))?.is_enrolled ?? false)
-                    ) ? (
+                      ) ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6">
                       <div className="flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 mb-4 shadow-lg shadow-orange-500/30">
                         <Lock className="h-8 w-8 text-white" />
