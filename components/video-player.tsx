@@ -1234,13 +1234,23 @@ function EmbedPlayer({
 
     try {
       const player = new Player(iframe);
+      const eventNames = ["ready", "play", "timeupdate", "ended"] as const;
+      const eventCallbacks = new Map<string, (value?: unknown) => void>();
       // Player.js subscriptions cause Bunny to send only the events we use below.
-      for (const eventName of ["ready", "play", "timeupdate", "ended"]) {
-        player.on(eventName, () => {});
+      for (const eventName of eventNames) {
+        const callback = () => {};
+        eventCallbacks.set(eventName, callback);
+        player.on(eventName, callback);
       }
       return () => {
-        for (const eventName of ["ready", "play", "timeupdate", "ended"]) {
-          player.off?.(eventName);
+        for (const eventName of eventNames) {
+          const callback = eventCallbacks.get(eventName);
+          if (!callback) continue;
+          try {
+            player.off?.(eventName, callback);
+          } catch {
+            // Bunny's Player.js may lose its iframe target while React tears it down.
+          }
         }
       };
     } catch {
