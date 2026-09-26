@@ -721,6 +721,12 @@ export function VideoPlayer({
             attributes: {
               crossOrigin: undefined,
             },
+            // The same-site relay URL intentionally does not expose a .m3u8
+            // suffix. Force ReactPlayer to use hls.js for relay playback;
+            // otherwise Chrome treats the endpoint as a plain video URL and
+            // fails immediately even when the backend returns a valid HLS
+            // manifest.
+            forceHLS: activeSource.type === "hls_proxy",
             forceVideo: true,
           },
         }}
