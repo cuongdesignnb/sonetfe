@@ -229,8 +229,12 @@ export default function CourseDetailPage() {
     (c.marketing as LandingMarketing | undefined)?.landing_nav?.logo_url ||
     null;
 
-  function scrollToPricing(sectionId?: number) {
-    if (sectionId) {
+  // Many CTA buttons pass this function straight to onClick, so it receives
+  // the click event instead of a section id. Only accept a real number —
+  // storing the event made selectedSectionId a DOM object, which broke
+  // voucher validation and checkout (JSON.stringify of a circular structure).
+  function scrollToPricing(sectionId?: unknown) {
+    if (typeof sectionId === "number" && Number.isFinite(sectionId)) {
       setSelectedSectionId(sectionId);
     }
     if (data?.is_enrolled) {
