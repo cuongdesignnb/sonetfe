@@ -267,7 +267,11 @@ export default function CourseDetailPage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setVoucherError(json?.message || "Mã giảm giá không hợp lệ");
+        setVoucherError(json?.message || `Mã giảm giá không hợp lệ (HTTP ${res.status})`);
+        return;
+      }
+      if (!json?.voucher) {
+        setVoucherError(`Máy chủ trả về dữ liệu không hợp lệ (HTTP ${res.status})`);
         return;
       }
       setAppliedVoucher({
@@ -279,8 +283,10 @@ export default function CourseDetailPage() {
         discount_amount: json.discount_amount,
         final_amount: json.final_amount,
       });
-    } catch {
-      setVoucherError("Không thể kiểm tra mã giảm giá");
+    } catch (err) {
+      // Network / CORS failure: show the browser's reason so it can be diagnosed.
+      const reason = err instanceof Error ? err.message : String(err);
+      setVoucherError(`Không thể kết nối máy chủ để kiểm tra mã (${reason}). Vui lòng thử lại.`);
     } finally {
       setVoucherLoading(false);
     }
