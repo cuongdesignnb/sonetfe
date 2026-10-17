@@ -218,12 +218,23 @@ export default function CourseDetailPage() {
   }
 
   const c = data.course;
+
+  // Tier the student is actually buying. RegistrationSection pre-selects the
+  // default tier on screen, so use the same default here — otherwise checkout
+  // and voucher validation silently fell back to the plain course price.
+  const activeTiers = ((c as CourseData).duration_tiers ?? []).filter((t) => t.is_active);
+  const effectiveTierId: number | null =
+    selectedTierId ?? (activeTiers.find((t) => t.is_default) ?? activeTiers[0])?.id ?? null;
   const landingLogoUrl =
     (c.marketing as LandingMarketing | undefined)?.landing_nav?.logo_url ||
     null;
 
-  function scrollToPricing(sectionId?: number) {
-    if (sectionId) {
+  // Many CTA buttons pass this function straight to onClick, so it receives
+  // the click event instead of a section id. Only accept a real number —
+  // storing the event made selectedSectionId a DOM object, which broke
+  // voucher validation and checkout (JSON.stringify of a circular structure).
+  function scrollToPricing(sectionId?: unknown) {
+    if (typeof sectionId === "number" && Number.isFinite(sectionId)) {
       setSelectedSectionId(sectionId);
     }
     if (data?.is_enrolled) {
@@ -255,11 +266,16 @@ export default function CourseDetailPage() {
           code: voucherCode.trim(),
           course_id: data.course.id,
           section_id: selectedSectionId || null,
+          duration_tier_id: selectedSectionId ? null : effectiveTierId,
         }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        setVoucherError(json?.message || "Mã giảm giá không hợp lệ");
+        setVoucherError(json?.message || `Mã giảm giá không hợp lệ (HTTP ${res.status})`);
+        return;
+      }
+      if (!json?.voucher) {
+        setVoucherError(`Máy chủ trả về dữ liệu không hợp lệ (HTTP ${res.status})`);
         return;
       }
       setAppliedVoucher({
@@ -271,8 +287,10 @@ export default function CourseDetailPage() {
         discount_amount: json.discount_amount,
         final_amount: json.final_amount,
       });
-    } catch {
-      setVoucherError("Không thể kiểm tra mã giảm giá");
+    } catch (err) {
+      // Network / CORS failure: show the browser's reason so it can be diagnosed.
+      const reason = err instanceof Error ? err.message : String(err);
+      setVoucherError(`Không thể kết nối máy chủ để kiểm tra mã (${reason}). Vui lòng thử lại.`);
     } finally {
       setVoucherLoading(false);
     }
@@ -284,7 +302,9 @@ export default function CourseDetailPage() {
     setVoucherError(null);
   }
 
-  async function handleCheckout() {
+  // tierIdOverride: the tier picked in the same click — state updates are
+  // async, so reading selectedTierId here would still give the old value.
+  async function handleCheckout(tierIdOverride?: number | null) {
     setCheckoutError(null);
     if (!user) {
       router.push(`/auth/login?redirect=/courses/${c.slug || params.id}`);
@@ -301,7 +321,7 @@ export default function CourseDetailPage() {
         },
         body: JSON.stringify({
           voucher_code: appliedVoucher?.code || null,
-          duration_tier_id: selectedSectionId ? null : (selectedTierId || null),
+          duration_tier_id: selectedSectionId ? null : (tierIdOverride ?? effectiveTierId),
           section_id: selectedSectionId || null,
         }),
       });
@@ -388,7 +408,7 @@ export default function CourseDetailPage() {
         isEnrolled={data.is_enrolled}
         onRegisterSuccess={(tierId) => {
           if (tierId) setSelectedTierId(tierId);
-          handleCheckout();
+          handleCheckout(tierId);
         }}
         onLearnClick={() =>
           router.push(`/courses/${c.slug || params.id}/learn`)
@@ -400,8 +420,12 @@ export default function CourseDetailPage() {
         onRemoveVoucher={handleRemoveVoucher}
         voucherLoading={voucherLoading}
         voucherError={voucherError}
-        selectedTierId={selectedTierId}
-        onTierSelect={setSelectedTierId}
+        selectedTierId={effectiveTierId}
+        onTierSelect={(tierId) => {
+          // The applied voucher was priced for the previous tier.
+          if (tierId !== effectiveTierId) handleRemoveVoucher();
+          setSelectedTierId(tierId);
+        }}
         selectedSectionId={selectedSectionId}
         onSectionSelect={setSelectedSectionId}
         checkoutError={checkoutError}

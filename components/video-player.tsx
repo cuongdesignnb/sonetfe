@@ -22,8 +22,127 @@ import { cn } from "@/lib/utils";
 import { useBrowserSecurity } from "@/hooks/use-browser-security";
 import { VideoSecurityError } from "@/components/video-security-error";
 
+export type PlaybackSource = {
+  type: "bunny_embed" | "hls_proxy" | "direct";
+  url: string;
+  origin?: string;
+};
+
+export type PlaybackEventPayload = {
+  event:
+    | "video_primary_requested"
+    | "video_primary_ready"
+    | "video_primary_timeout"
+    | "video_primary_error"
+    | "video_fallback_requested"
+    | "video_fallback_ready"
+    | "video_fallback_error";
+  provider: "bunny_embed" | "hls_proxy" | "direct";
+  elapsedMs: number;
+  errorCategory?: string;
+};
+
+type PlaybackPhase =
+  | "IDLE"
+  | "PRIMARY_LOADING"
+  | "PRIMARY_READY"
+  | "PRIMARY_FAILED"
+  | "FALLBACK_LOADING"
+  | "FALLBACK_READY"
+  | "FALLBACK_FAILED";
+
+type PlayerJsInstance = {
+  on: (event: string, callback: (value?: unknown) => void) => void;
+  off?: (event: string, callback?: (value?: unknown) => void) => void;
+};
+
+type PlayerJsConstructor = new (iframe: HTMLIFrameElement) => PlayerJsInstance;
+
+declare global {
+  interface Window {
+    playerjs?: { Player: PlayerJsConstructor };
+  }
+}
+
+let bunnyPlayerJsLoad: Promise<boolean> | null = null;
+
+function loadBunnyPlayerJs(): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.playerjs?.Player) return Promise.resolve(true);
+  if (bunnyPlayerJsLoad) return bunnyPlayerJsLoad;
+
+  bunnyPlayerJsLoad = new Promise((resolve) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[data-sonet-bunny-playerjs="true"]',
+    );
+    const script = existing ?? document.createElement("script");
+    let settled = false;
+    const finish = (loaded: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(loaded && Boolean(window.playerjs?.Player));
+    };
+    const timeout = window.setTimeout(() => finish(false), 3000);
+    script.addEventListener("load", () => finish(true), { once: true });
+    script.addEventListener("error", () => finish(false), { once: true });
+    if (!existing) {
+      script.src = "https://assets.mediadelivery.net/playerjs/player-0.1.0.min.js";
+      script.async = true;
+      script.dataset.sonetBunnyPlayerjs = "true";
+      document.head.appendChild(script);
+    }
+  });
+
+  return bunnyPlayerJsLoad;
+}
+
+type HlsSupport = "pending" | "hlsjs" | "native" | "none";
+
+let hlsSupportLoad: Promise<HlsSupport> | null = null;
+
+/**
+ * Decide how the HLS relay is played.
+ *
+ * react-player would otherwise download hls.js 1.1.4 from cdn.jsdelivr.net at
+ * runtime: an extra third-party host that some Vietnamese networks cannot
+ * reach, and a version without ManagedMediaSource support, so it can never
+ * play on iPhone. Bundle a current hls.js, expose it as window.Hls (which
+ * react-player picks up instead of fetching the CDN copy) and fall back to
+ * Safari's native HLS when MSE is unavailable.
+ */
+function detectHlsSupport(): Promise<HlsSupport> {
+  if (typeof window === "undefined") return Promise.resolve("none");
+  if (hlsSupportLoad) return hlsSupportLoad;
+
+  hlsSupportLoad = import("hls.js")
+    .then(({ default: Hls }) => {
+      if (Hls.isSupported()) {
+        (window as unknown as { Hls?: typeof Hls }).Hls = Hls;
+        return "hlsjs" as const;
+      }
+      return canPlayNativeHls() ? ("native" as const) : ("none" as const);
+    })
+    .catch(() => (canPlayNativeHls() ? ("native" as const) : ("none" as const)));
+
+  return hlsSupportLoad;
+}
+
+function canPlayNativeHls(): boolean {
+  try {
+    return document.createElement("video").canPlayType("application/vnd.apple.mpegurl") !== "";
+  } catch {
+    return false;
+  }
+}
+
 interface VideoPlayerProps {
   url: string;
+  primary?: PlaybackSource;
+  fallback?: PlaybackSource | null;
+  failoverTimeoutMs?: number;
+  onPlaybackEvent?: (event: PlaybackEventPayload) => void;
+  initialPlaybackSeconds?: number;
   forceEmbed?: boolean;
   embedHtml?: string | null;
   poster?: string;
@@ -59,6 +178,11 @@ const SKIP_SECONDS = 10;
 
 export function VideoPlayer({
   url,
+  primary,
+  fallback = null,
+  failoverTimeoutMs = 10000,
+  onPlaybackEvent,
+  initialPlaybackSeconds = 0,
   forceEmbed = false,
   embedHtml = null,
   poster,
@@ -69,14 +193,27 @@ export function VideoPlayer({
   autoplay = false,
   controls = true,
 }: VideoPlayerProps) {
+  const primarySource = useMemo<PlaybackSource>(
+    () => primary ?? { type: forceEmbed ? "bunny_embed" : "direct", url },
+    [forceEmbed, primary, url],
+  );
+  const initialMode = primarySource.type === "hls_proxy" ? "fallback" : "primary";
+  const [sourceMode, setSourceMode] = useState<"primary" | "fallback">(
+    initialMode,
+  );
+  const activeSource =
+    sourceMode === "fallback" && fallback ? fallback : primarySource;
+  const activeUrl = activeSource.url || url;
+  const activeEmbedHtml = sourceMode === "primary" ? embedHtml : null;
   const isEmbed =
-    Boolean(embedHtml) ||
-    forceEmbed ||
+    Boolean(activeEmbedHtml) ||
+    activeSource.type === "bunny_embed" ||
+    (sourceMode === "primary" && forceEmbed) ||
     /mediadelivery\.net\/embed\/|video\.bunnycdn\.com\/embed\/|\/embed\//i.test(
-      url,
+      activeUrl,
     );
   const playerRef = useRef<ReactPlayer>(null);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(initialMode === "fallback" || autoplay);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [duration, setDuration] = useState(0);
@@ -85,8 +222,179 @@ export function VideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [playbackPhase, setPlaybackPhase] = useState<PlaybackPhase>(
+    initialMode === "fallback" ? "FALLBACK_LOADING" : "PRIMARY_LOADING",
+  );
+  const playbackPhaseRef = useRef<PlaybackPhase>(
+    initialMode === "fallback" ? "FALLBACK_LOADING" : "PRIMARY_LOADING",
+  );
+  const fallbackAttemptedRef = useRef(initialMode === "fallback");
+  const primaryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playbackStartedAtRef = useRef(Date.now());
+  const lastKnownTimeRef = useRef(Math.max(0, initialPlaybackSeconds));
+  const endedReportedRef = useRef(false);
+  const [playerRetryKey, setPlayerRetryKey] = useState(0);
+  const [hlsSupport, setHlsSupport] = useState<HlsSupport>("pending");
+  const needsHls = activeSource.type === "hls_proxy";
+
+  useEffect(() => {
+    if (!needsHls || hlsSupport !== "pending") return;
+    let cancelled = false;
+    detectHlsSupport().then((support) => {
+      if (!cancelled) setHlsSupport(support);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hlsSupport, needsHls]);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
+
+  const transitionPhase = useCallback((phase: PlaybackPhase) => {
+    playbackPhaseRef.current = phase;
+    setPlaybackPhase(phase);
+  }, []);
+
+  const emitPlaybackEvent = useCallback(
+    (
+      event: PlaybackEventPayload["event"],
+      provider: PlaybackEventPayload["provider"],
+      errorCategory?: string,
+    ) => {
+      onPlaybackEvent?.({
+        event,
+        provider,
+        elapsedMs: Math.max(0, Date.now() - playbackStartedAtRef.current),
+        ...(errorCategory ? { errorCategory } : {}),
+      });
+    },
+    [onPlaybackEvent],
+  );
+
+  const switchToFallback = useCallback(
+    (reason?: "PRIMARY_TIMEOUT" | "PRIMARY_IFRAME_ERROR") => {
+      if (!fallback) return;
+      // Automatic switches happen once; a manual click is always honoured.
+      if (reason && fallbackAttemptedRef.current) return;
+      fallbackAttemptedRef.current = true;
+      if (primaryTimeoutRef.current) {
+        clearTimeout(primaryTimeoutRef.current);
+        primaryTimeoutRef.current = null;
+      }
+      if (reason === "PRIMARY_TIMEOUT") {
+        transitionPhase("PRIMARY_FAILED");
+        emitPlaybackEvent("video_primary_timeout", "bunny_embed", reason);
+      } else if (reason === "PRIMARY_IFRAME_ERROR") {
+        transitionPhase("PRIMARY_FAILED");
+        emitPlaybackEvent("video_primary_error", "bunny_embed", reason);
+      }
+      emitPlaybackEvent("video_fallback_requested", "hls_proxy", reason);
+      transitionPhase("FALLBACK_LOADING");
+      setSourceMode("fallback");
+      setPlayerRetryKey((key) => key + 1);
+      setPlaying(true);
+    },
+    [emitPlaybackEvent, fallback, transitionPhase],
+  );
+
+  const markPrimaryReady = useCallback(() => {
+    if (playbackPhaseRef.current === "PRIMARY_READY") return;
+    if (primaryTimeoutRef.current) {
+      clearTimeout(primaryTimeoutRef.current);
+      primaryTimeoutRef.current = null;
+    }
+    transitionPhase("PRIMARY_READY");
+    emitPlaybackEvent("video_primary_ready", "bunny_embed");
+  }, [emitPlaybackEvent, transitionPhase]);
+
+  // The Bunny player loaded: stop the automatic failover timer. Waiting for
+  // "play" here switched every student who had not pressed play within the
+  // timeout to the relay, even though the primary player was fine.
+  const markPrimaryLoaded = useCallback(() => {
+    if (primaryTimeoutRef.current) {
+      clearTimeout(primaryTimeoutRef.current);
+      primaryTimeoutRef.current = null;
+    }
+  }, []);
+
+  // The student pressed play: if no frame advances within the timeout, the
+  // Bunny stream itself is unreachable and the relay should take over.
+  const watchPrimaryPlayback = useCallback(() => {
+    if (!fallback || playbackPhaseRef.current === "PRIMARY_READY") return;
+    if (primaryTimeoutRef.current) clearTimeout(primaryTimeoutRef.current);
+    primaryTimeoutRef.current = setTimeout(() => {
+      if (playbackPhaseRef.current !== "PRIMARY_READY") {
+        switchToFallback("PRIMARY_TIMEOUT");
+      }
+    }, Math.max(1000, Math.min(30000, failoverTimeoutMs)));
+  }, [failoverTimeoutMs, fallback, switchToFallback]);
+
+  const returnToPrimary = useCallback(() => {
+    if (primaryTimeoutRef.current) {
+      clearTimeout(primaryTimeoutRef.current);
+      primaryTimeoutRef.current = null;
+    }
+    transitionPhase("PRIMARY_LOADING");
+    setSourceMode("primary");
+    setPlaying(false);
+  }, [transitionPhase]);
+
+  const markFallbackReady = useCallback(() => {
+    if (playbackPhaseRef.current === "FALLBACK_READY") return;
+    const isForcedRelay = primarySource.type === "hls_proxy";
+    transitionPhase(isForcedRelay ? "PRIMARY_READY" : "FALLBACK_READY");
+    emitPlaybackEvent(
+      isForcedRelay ? "video_primary_ready" : "video_fallback_ready",
+      "hls_proxy",
+    );
+  }, [emitPlaybackEvent, primarySource.type, transitionPhase]);
+
+  const markFallbackFailed = useCallback(() => {
+    if (
+      playbackPhaseRef.current === "FALLBACK_FAILED" ||
+      playbackPhaseRef.current === "PRIMARY_FAILED"
+    ) {
+      return;
+    }
+    const isForcedRelay = primarySource.type === "hls_proxy";
+    transitionPhase(isForcedRelay ? "PRIMARY_FAILED" : "FALLBACK_FAILED");
+    emitPlaybackEvent(
+      isForcedRelay ? "video_primary_error" : "video_fallback_error",
+      "hls_proxy",
+      "FALLBACK_UPSTREAM_ERROR",
+    );
+  }, [emitPlaybackEvent, primarySource.type, transitionPhase]);
+
+  useEffect(() => {
+    playbackStartedAtRef.current = Date.now();
+    emitPlaybackEvent("video_primary_requested", primarySource.type);
+    if (primarySource.type === "hls_proxy") {
+      return;
+    }
+
+    if (primarySource.type === "bunny_embed" && fallback) {
+      transitionPhase("PRIMARY_LOADING");
+      primaryTimeoutRef.current = setTimeout(() => {
+        if (playbackPhaseRef.current !== "PRIMARY_READY") {
+          switchToFallback("PRIMARY_TIMEOUT");
+        }
+      }, Math.max(1000, Math.min(30000, failoverTimeoutMs)));
+    }
+
+    return () => {
+      if (primaryTimeoutRef.current) {
+        clearTimeout(primaryTimeoutRef.current);
+        primaryTimeoutRef.current = null;
+      }
+    };
+  }, [
+    emitPlaybackEvent,
+    failoverTimeoutMs,
+    fallback,
+    primarySource.type,
+    switchToFallback,
+    transitionPhase,
+  ]);
 
   // Playback speed
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -278,15 +586,77 @@ export function VideoPlayer({
     }
   };
 
-  const handleProgress = (state: ProgressState) => {
-    setPlayed(state.played);
-    setLoaded(state.loaded);
-    onProgress?.(state);
-  };
+  const handleProgress = useCallback(
+    (state: ProgressState) => {
+      lastKnownTimeRef.current = Math.max(0, state.playedSeconds);
+      setPlayed(state.played);
+      setLoaded(state.loaded);
+      if (
+        sourceMode === "primary" &&
+        primarySource.type === "bunny_embed" &&
+        state.playedSeconds > 0
+      ) {
+        markPrimaryReady();
+      } else if (sourceMode === "fallback" && state.playedSeconds > 0) {
+        markFallbackReady();
+      }
+      onProgress?.(state);
+    },
+    [markFallbackReady, markPrimaryReady, onProgress, primarySource.type, sourceMode],
+  );
 
-  const handleDuration = (dur: number) => {
-    setDuration(dur);
-    onDuration?.(dur);
+  const handleDuration = useCallback(
+    (dur: number) => {
+      setDuration(dur);
+      onDuration?.(dur);
+    },
+    [onDuration],
+  );
+
+  const handleReactPlayerPlay = useCallback(() => {
+    if (sourceMode === "fallback") {
+      markFallbackReady();
+    }
+  }, [markFallbackReady, sourceMode]);
+
+  // hls.js reports recoverable problems (a stalled buffer, one segment retry)
+  // through the same error callback. Only a fatal error means the relay failed;
+  // treating every report as fatal covered a playing video with the error.
+  const handleFallbackError = useCallback(
+    (_error: unknown, data?: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "fatal" in data &&
+        (data as { fatal?: unknown }).fatal === false
+      ) {
+        return;
+      }
+      markFallbackFailed();
+    },
+    [markFallbackFailed],
+  );
+
+  const handlePrimaryError = useCallback(
+    () => switchToFallback("PRIMARY_IFRAME_ERROR"),
+    [switchToFallback],
+  );
+
+  const handleEnded = useCallback(() => {
+    if (endedReportedRef.current) return;
+    endedReportedRef.current = true;
+    onEnded?.();
+  }, [onEnded]);
+
+  const handleReactPlayerReady = () => {
+    if (sourceMode !== "fallback") return;
+    const resumeAt = lastKnownTimeRef.current > 0
+      ? lastKnownTimeRef.current
+      : Math.max(0, initialPlaybackSeconds);
+    if (resumeAt <= 0) return;
+    window.setTimeout(() => {
+      playerRef.current?.seekTo(resumeAt, "seconds");
+    }, 0);
   };
 
   const handleFullscreen = () => {
@@ -398,13 +768,21 @@ export function VideoPlayer({
   if (isEmbed) {
     return (
       <EmbedPlayer
-        url={url}
-        embedHtml={embedHtml}
+        url={activeUrl}
+        embedHtml={activeEmbedHtml}
+        enableBunnyPlayerApi={activeSource.type === "bunny_embed"}
+        trustedMessageOrigin={activeSource.origin}
         className={className}
         containerRef={containerRef}
-        onProgress={onProgress}
-        onDuration={onDuration}
-        onEnded={onEnded}
+        canFallback={Boolean(fallback) && sourceMode === "primary"}
+        isPrimaryHealthy={playbackPhase === "PRIMARY_READY"}
+        onManualFallback={() => switchToFallback()}
+        onPrimaryError={handlePrimaryError}
+        onPrimaryLoaded={markPrimaryLoaded}
+        onPrimaryPlay={watchPrimaryPlayback}
+        onPrimaryProgress={handleProgress}
+        onDuration={handleDuration}
+        onEnded={handleEnded}
       />
     );
   }
@@ -428,8 +806,10 @@ export function VideoPlayer({
       tabIndex={0}
     >
       <ReactPlayer
+        key={`${activeUrl}:${playerRetryKey}:${hlsSupport}`}
         ref={playerRef}
-        url={url}
+        // Wait until we know whether hls.js or native HLS will play the relay.
+        url={needsHls && hlsSupport === "pending" ? undefined : activeUrl}
         width="100%"
         height="100%"
         playing={playing}
@@ -438,17 +818,54 @@ export function VideoPlayer({
         playbackRate={playbackRate}
         onProgress={handleProgress}
         onDuration={handleDuration}
-        onEnded={onEnded}
+        onEnded={handleEnded}
+        onPlay={handleReactPlayerPlay}
+        onReady={handleReactPlayerReady}
+        onError={sourceMode === "fallback" ? handleFallbackError : undefined}
         poster={poster}
         config={{
           file: {
             attributes: {
               crossOrigin: undefined,
             },
+            // The same-site relay URL intentionally does not expose a .m3u8
+            // suffix. Force ReactPlayer to use hls.js for relay playback;
+            // otherwise Chrome treats the endpoint as a plain video URL and
+            // fails immediately even when the backend returns a valid HLS
+            // manifest.
+            // On iPhone (no MSE) Safari plays HLS natively instead.
+            forceHLS: needsHls && hlsSupport !== "native",
             forceVideo: true,
           },
         }}
       />
+
+      {playbackPhase === "FALLBACK_FAILED" ||
+      playbackPhase === "PRIMARY_FAILED" ? (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center text-white">
+          <p>Không thể tải video dự phòng lúc này.</p>
+          <button
+            type="button"
+            className="rounded-md bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
+            onClick={() => {
+              transitionPhase("FALLBACK_LOADING");
+              setPlaying(true);
+              setPlayerRetryKey((key) => key + 1);
+            }}
+          >
+            Thử lại video dự phòng
+          </button>
+          {primarySource.type === "bunny_embed" ? (
+            <button
+              type="button"
+              className="rounded-md bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
+              onClick={returnToPrimary}
+            >
+              Quay lại máy chủ chính
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {controls && (
         <div
@@ -853,102 +1270,207 @@ export function VideoPlayer({
 function EmbedPlayer({
   url,
   embedHtml,
-  className,
-  containerRef,
-  onProgress,
+  enableBunnyPlayerApi,
+  trustedMessageOrigin,
+  canFallback,
+  isPrimaryHealthy,
+  onManualFallback,
+  onPrimaryError,
+  onPrimaryLoaded,
+  onPrimaryPlay,
+  onPrimaryProgress,
   onDuration,
   onEnded,
+  className,
+  containerRef,
 }: {
   url: string;
   embedHtml: string | null;
-  className?: string;
-  containerRef: React.RefObject<HTMLDivElement>;
-  onProgress?: VideoPlayerProps["onProgress"];
+  enableBunnyPlayerApi: boolean;
+  trustedMessageOrigin?: string;
+  canFallback: boolean;
+  isPrimaryHealthy: boolean;
+  onManualFallback: () => void;
+  onPrimaryError: () => void;
+  onPrimaryLoaded: () => void;
+  onPrimaryPlay: () => void;
+  onPrimaryProgress: (progress: ProgressState) => void;
   onDuration?: VideoPlayerProps["onDuration"];
   onEnded?: VideoPlayerProps["onEnded"];
+  className?: string;
+  containerRef: React.RefObject<HTMLDivElement>;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [embedDuration, setEmbedDuration] = useState(0);
+  const embedDurationRef = useRef(0);
+  const [playerJsLoaded, setPlayerJsLoaded] = useState(false);
+  const [playerJsResolved, setPlayerJsResolved] = useState(!enableBunnyPlayerApi);
+  const endedHandledRef = useRef(false);
 
-  // Ensure embed URL includes responsive + autoplay params for Bunny
   const enhancedUrl = useMemo(() => {
     if (!url) return url;
     try {
-      const u = new URL(url);
-      // Add Bunny player API params if it's a Bunny embed
+      const parsed = new URL(url);
       if (
-        u.hostname.includes("mediadelivery.net") ||
-        u.hostname.includes("bunnycdn.com")
+        parsed.hostname === "iframe.mediadelivery.net" ||
+        parsed.hostname.endsWith(".mediadelivery.net")
       ) {
-        if (!u.searchParams.has("responsive")) {
-          u.searchParams.set("responsive", "true");
+        if (!parsed.searchParams.has("responsive")) {
+          parsed.searchParams.set("responsive", "true");
         }
       }
-      return u.toString();
+      return parsed.toString();
     } catch {
       return url;
     }
   }, [url]);
 
-  // Listen for Bunny CDN player postMessage events
+  const allowedOrigins = useMemo(() => {
+    const origins = new Set<string>(["https://iframe.mediadelivery.net"]);
+    if (trustedMessageOrigin) {
+      try {
+        const trusted = new URL(trustedMessageOrigin);
+        if (trusted.protocol === "https:") origins.add(trusted.origin);
+      } catch {
+        // Invalid origins are ignored; the standard Bunny player origin remains.
+      }
+    }
+    return origins;
+  }, [trustedMessageOrigin]);
+
   useEffect(() => {
+    if (!enableBunnyPlayerApi || embedHtml) return;
+    let cancelled = false;
+    loadBunnyPlayerJs().then((loaded) => {
+      if (!cancelled) {
+        setPlayerJsLoaded(loaded);
+        setPlayerJsResolved(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enableBunnyPlayerApi, embedHtml]);
+
+  useEffect(() => {
+    if (!enableBunnyPlayerApi || embedHtml || !playerJsLoaded) return;
+    const iframe = iframeRef.current;
+    const Player = window.playerjs?.Player;
+    if (!iframe || !Player) return;
+
+    try {
+      const player = new Player(iframe);
+      const eventNames = ["ready", "play", "timeupdate", "ended"] as const;
+      const eventCallbacks = new Map<string, (value?: unknown) => void>();
+      // Player.js subscriptions cause Bunny to send only the events we use below.
+      for (const eventName of eventNames) {
+        const callback = () => {};
+        eventCallbacks.set(eventName, callback);
+        player.on(eventName, callback);
+      }
+      return () => {
+        for (const eventName of eventNames) {
+          const callback = eventCallbacks.get(eventName);
+          if (!callback) continue;
+          try {
+            player.off?.(eventName, callback);
+          } catch {
+            // Bunny's Player.js may lose its iframe target while React tears it down.
+          }
+        }
+      };
+    } catch {
+      onPrimaryError();
+    }
+  }, [enableBunnyPlayerApi, embedHtml, onPrimaryError, playerJsLoaded, enhancedUrl]);
+
+  useEffect(() => {
+    if (!enableBunnyPlayerApi || embedHtml) return;
+
     const handleMessage = (event: MessageEvent) => {
-      // Bunny CDN sends messages from iframe.mediadelivery.net
-      if (typeof event.data !== "object" || !event.data) return;
+      const iframe = iframeRef.current;
+      if (!iframe?.contentWindow || event.source !== iframe.contentWindow) return;
+      if (!allowedOrigins.has(event.origin)) return;
+      if (!event.data || typeof event.data !== "object" || Array.isArray(event.data)) return;
 
-      const { event: eventName, data } = event.data;
+      const message = event.data as Record<string, unknown>;
+      if (
+        message.context !== "player.js" ||
+        (typeof message.version !== "string" && typeof message.version !== "number") ||
+        typeof message.event !== "string" ||
+        !["ready", "play", "pause", "timeupdate", "ended"].includes(message.event)
+      ) {
+        return;
+      }
 
-      switch (eventName) {
-        case "videoProgress": {
-          // Bunny sends { currentTime, duration }
-          const currentTime = data?.currentTime ?? 0;
-          const dur = data?.duration ?? embedDuration;
-          if (dur > 0) {
-            setEmbedDuration(dur);
-            onProgress?.({
-              played: currentTime / dur,
-              playedSeconds: currentTime,
-              loaded: 1,
-              loadedSeconds: dur,
-            });
+      if (message.event === "ready") {
+        onPrimaryLoaded();
+        return;
+      }
+      if (message.event === "play") {
+        // Pressing play is not proof the stream loads; wait for progress.
+        onPrimaryPlay();
+        return;
+      }
+      if (message.event === "timeupdate") {
+        let value: unknown = message.value;
+        if (typeof value === "string") {
+          try {
+            value = JSON.parse(value);
+          } catch {
+            return;
           }
-          break;
         }
-        case "videoDuration": {
-          const dur = data?.duration ?? 0;
-          if (dur > 0) {
-            setEmbedDuration(dur);
-            onDuration?.(dur);
-          }
-          break;
+        if (!value || typeof value !== "object" || Array.isArray(value)) return;
+        const timing = value as Record<string, unknown>;
+        const seconds = Number(timing.seconds);
+        const duration = Number(timing.duration);
+        if (
+          !Number.isFinite(seconds) ||
+          !Number.isFinite(duration) ||
+          seconds < 0 ||
+          duration <= 0 ||
+          seconds > duration + 1
+        ) {
+          return;
         }
-        case "videoEnded": {
-          // Fire final progress at 100%
-          if (embedDuration > 0) {
-            onProgress?.({
-              played: 1,
-              playedSeconds: embedDuration,
-              loaded: 1,
-              loadedSeconds: embedDuration,
-            });
-          }
-          onEnded?.();
-          break;
+
+        embedDurationRef.current = duration;
+        onDuration?.(duration);
+        onPrimaryProgress({
+          played: Math.min(1, seconds / duration),
+          playedSeconds: seconds,
+          loaded: 1,
+          loadedSeconds: duration,
+        });
+        return;
+      }
+      if (message.event === "ended" && !endedHandledRef.current) {
+        endedHandledRef.current = true;
+        if (embedDurationRef.current > 0) {
+          onPrimaryProgress({
+            played: 1,
+            playedSeconds: embedDurationRef.current,
+            loaded: 1,
+            loadedSeconds: embedDurationRef.current,
+          });
         }
-        case "videoPlaying": {
-          const dur = data?.duration ?? 0;
-          if (dur > 0 && embedDuration === 0) {
-            setEmbedDuration(dur);
-            onDuration?.(dur);
-          }
-          break;
-        }
+        onEnded?.();
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onProgress, onDuration, onEnded, embedDuration]);
+  }, [
+    allowedOrigins,
+    embedHtml,
+    enableBunnyPlayerApi,
+    onDuration,
+    onEnded,
+    onPrimaryError,
+    onPrimaryLoaded,
+    onPrimaryPlay,
+    onPrimaryProgress,
+  ]);
 
   return (
     <div
@@ -964,6 +1486,8 @@ function EmbedPlayer({
             className="h-full w-full"
             dangerouslySetInnerHTML={{ __html: embedHtml }}
           />
+        ) : enableBunnyPlayerApi && !playerJsResolved ? (
+          <div className="h-full w-full bg-black" aria-label="Đang tải trình phát video" />
         ) : (
           <iframe
             ref={iframeRef}
@@ -974,9 +1498,21 @@ function EmbedPlayer({
             loading="lazy"
             title="Trình phát video"
             referrerPolicy="origin"
+            onError={() => {
+              if (enableBunnyPlayerApi && canFallback) onPrimaryError();
+            }}
           />
         )}
       </div>
+      {canFallback && !isPrimaryHealthy ? (
+        <button
+          type="button"
+          className="absolute bottom-3 right-3 z-10 rounded-md bg-black/80 px-3 py-2 text-sm text-white shadow-lg ring-1 ring-white/20 hover:bg-black"
+          onClick={onManualFallback}
+        >
+          Video không phát? Chuyển máy chủ dự phòng
+        </button>
+      ) : null}
     </div>
   );
 }
