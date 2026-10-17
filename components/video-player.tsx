@@ -97,6 +97,45 @@ function loadBunnyPlayerJs(): Promise<boolean> {
   return bunnyPlayerJsLoad;
 }
 
+type HlsSupport = "pending" | "hlsjs" | "native" | "none";
+
+let hlsSupportLoad: Promise<HlsSupport> | null = null;
+
+/**
+ * Decide how the HLS relay is played.
+ *
+ * react-player would otherwise download hls.js 1.1.4 from cdn.jsdelivr.net at
+ * runtime: an extra third-party host that some Vietnamese networks cannot
+ * reach, and a version without ManagedMediaSource support, so it can never
+ * play on iPhone. Bundle a current hls.js, expose it as window.Hls (which
+ * react-player picks up instead of fetching the CDN copy) and fall back to
+ * Safari's native HLS when MSE is unavailable.
+ */
+function detectHlsSupport(): Promise<HlsSupport> {
+  if (typeof window === "undefined") return Promise.resolve("none");
+  if (hlsSupportLoad) return hlsSupportLoad;
+
+  hlsSupportLoad = import("hls.js")
+    .then(({ default: Hls }) => {
+      if (Hls.isSupported()) {
+        (window as unknown as { Hls?: typeof Hls }).Hls = Hls;
+        return "hlsjs" as const;
+      }
+      return canPlayNativeHls() ? ("native" as const) : ("none" as const);
+    })
+    .catch(() => (canPlayNativeHls() ? ("native" as const) : ("none" as const)));
+
+  return hlsSupportLoad;
+}
+
+function canPlayNativeHls(): boolean {
+  try {
+    return document.createElement("video").canPlayType("application/vnd.apple.mpegurl") !== "";
+  } catch {
+    return false;
+  }
+}
+
 interface VideoPlayerProps {
   url: string;
   primary?: PlaybackSource;
@@ -195,6 +234,19 @@ export function VideoPlayer({
   const lastKnownTimeRef = useRef(Math.max(0, initialPlaybackSeconds));
   const endedReportedRef = useRef(false);
   const [playerRetryKey, setPlayerRetryKey] = useState(0);
+  const [hlsSupport, setHlsSupport] = useState<HlsSupport>("pending");
+  const needsHls = activeSource.type === "hls_proxy";
+
+  useEffect(() => {
+    if (!needsHls || hlsSupport !== "pending") return;
+    let cancelled = false;
+    detectHlsSupport().then((support) => {
+      if (!cancelled) setHlsSupport(support);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hlsSupport, needsHls]);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
 
@@ -221,7 +273,9 @@ export function VideoPlayer({
 
   const switchToFallback = useCallback(
     (reason?: "PRIMARY_TIMEOUT" | "PRIMARY_IFRAME_ERROR") => {
-      if (!fallback || fallbackAttemptedRef.current) return;
+      if (!fallback) return;
+      // Automatic switches happen once; a manual click is always honoured.
+      if (reason && fallbackAttemptedRef.current) return;
       fallbackAttemptedRef.current = true;
       if (primaryTimeoutRef.current) {
         clearTimeout(primaryTimeoutRef.current);
@@ -237,6 +291,7 @@ export function VideoPlayer({
       emitPlaybackEvent("video_fallback_requested", "hls_proxy", reason);
       transitionPhase("FALLBACK_LOADING");
       setSourceMode("fallback");
+      setPlayerRetryKey((key) => key + 1);
       setPlaying(true);
     },
     [emitPlaybackEvent, fallback, transitionPhase],
@@ -251,6 +306,38 @@ export function VideoPlayer({
     transitionPhase("PRIMARY_READY");
     emitPlaybackEvent("video_primary_ready", "bunny_embed");
   }, [emitPlaybackEvent, transitionPhase]);
+
+  // The Bunny player loaded: stop the automatic failover timer. Waiting for
+  // "play" here switched every student who had not pressed play within the
+  // timeout to the relay, even though the primary player was fine.
+  const markPrimaryLoaded = useCallback(() => {
+    if (primaryTimeoutRef.current) {
+      clearTimeout(primaryTimeoutRef.current);
+      primaryTimeoutRef.current = null;
+    }
+  }, []);
+
+  // The student pressed play: if no frame advances within the timeout, the
+  // Bunny stream itself is unreachable and the relay should take over.
+  const watchPrimaryPlayback = useCallback(() => {
+    if (!fallback || playbackPhaseRef.current === "PRIMARY_READY") return;
+    if (primaryTimeoutRef.current) clearTimeout(primaryTimeoutRef.current);
+    primaryTimeoutRef.current = setTimeout(() => {
+      if (playbackPhaseRef.current !== "PRIMARY_READY") {
+        switchToFallback("PRIMARY_TIMEOUT");
+      }
+    }, Math.max(1000, Math.min(30000, failoverTimeoutMs)));
+  }, [failoverTimeoutMs, fallback, switchToFallback]);
+
+  const returnToPrimary = useCallback(() => {
+    if (primaryTimeoutRef.current) {
+      clearTimeout(primaryTimeoutRef.current);
+      primaryTimeoutRef.current = null;
+    }
+    transitionPhase("PRIMARY_LOADING");
+    setSourceMode("primary");
+    setPlaying(false);
+  }, [transitionPhase]);
 
   const markFallbackReady = useCallback(() => {
     if (playbackPhaseRef.current === "FALLBACK_READY") return;
@@ -532,6 +619,24 @@ export function VideoPlayer({
     }
   }, [markFallbackReady, sourceMode]);
 
+  // hls.js reports recoverable problems (a stalled buffer, one segment retry)
+  // through the same error callback. Only a fatal error means the relay failed;
+  // treating every report as fatal covered a playing video with the error.
+  const handleFallbackError = useCallback(
+    (_error: unknown, data?: unknown) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "fatal" in data &&
+        (data as { fatal?: unknown }).fatal === false
+      ) {
+        return;
+      }
+      markFallbackFailed();
+    },
+    [markFallbackFailed],
+  );
+
   const handlePrimaryError = useCallback(
     () => switchToFallback("PRIMARY_IFRAME_ERROR"),
     [switchToFallback],
@@ -673,7 +778,8 @@ export function VideoPlayer({
         isPrimaryHealthy={playbackPhase === "PRIMARY_READY"}
         onManualFallback={() => switchToFallback()}
         onPrimaryError={handlePrimaryError}
-        onPrimaryReady={markPrimaryReady}
+        onPrimaryLoaded={markPrimaryLoaded}
+        onPrimaryPlay={watchPrimaryPlayback}
         onPrimaryProgress={handleProgress}
         onDuration={handleDuration}
         onEnded={handleEnded}
@@ -700,9 +806,10 @@ export function VideoPlayer({
       tabIndex={0}
     >
       <ReactPlayer
-        key={`${activeUrl}:${playerRetryKey}`}
+        key={`${activeUrl}:${playerRetryKey}:${hlsSupport}`}
         ref={playerRef}
-        url={activeUrl}
+        // Wait until we know whether hls.js or native HLS will play the relay.
+        url={needsHls && hlsSupport === "pending" ? undefined : activeUrl}
         width="100%"
         height="100%"
         playing={playing}
@@ -714,7 +821,7 @@ export function VideoPlayer({
         onEnded={handleEnded}
         onPlay={handleReactPlayerPlay}
         onReady={handleReactPlayerReady}
-        onError={sourceMode === "fallback" ? markFallbackFailed : undefined}
+        onError={sourceMode === "fallback" ? handleFallbackError : undefined}
         poster={poster}
         config={{
           file: {
@@ -726,7 +833,8 @@ export function VideoPlayer({
             // otherwise Chrome treats the endpoint as a plain video URL and
             // fails immediately even when the backend returns a valid HLS
             // manifest.
-            forceHLS: activeSource.type === "hls_proxy",
+            // On iPhone (no MSE) Safari plays HLS natively instead.
+            forceHLS: needsHls && hlsSupport !== "native",
             forceVideo: true,
           },
         }}
@@ -747,6 +855,15 @@ export function VideoPlayer({
           >
             Thử lại video dự phòng
           </button>
+          {primarySource.type === "bunny_embed" ? (
+            <button
+              type="button"
+              className="rounded-md bg-white/15 px-4 py-2 text-sm hover:bg-white/25"
+              onClick={returnToPrimary}
+            >
+              Quay lại máy chủ chính
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -1159,7 +1276,8 @@ function EmbedPlayer({
   isPrimaryHealthy,
   onManualFallback,
   onPrimaryError,
-  onPrimaryReady,
+  onPrimaryLoaded,
+  onPrimaryPlay,
   onPrimaryProgress,
   onDuration,
   onEnded,
@@ -1174,7 +1292,8 @@ function EmbedPlayer({
   isPrimaryHealthy: boolean;
   onManualFallback: () => void;
   onPrimaryError: () => void;
-  onPrimaryReady: () => void;
+  onPrimaryLoaded: () => void;
+  onPrimaryPlay: () => void;
   onPrimaryProgress: (progress: ProgressState) => void;
   onDuration?: VideoPlayerProps["onDuration"];
   onEnded?: VideoPlayerProps["onEnded"];
@@ -1283,8 +1402,13 @@ function EmbedPlayer({
         return;
       }
 
+      if (message.event === "ready") {
+        onPrimaryLoaded();
+        return;
+      }
       if (message.event === "play") {
-        onPrimaryReady();
+        // Pressing play is not proof the stream loads; wait for progress.
+        onPrimaryPlay();
         return;
       }
       if (message.event === "timeupdate") {
@@ -1343,7 +1467,8 @@ function EmbedPlayer({
     onDuration,
     onEnded,
     onPrimaryError,
-    onPrimaryReady,
+    onPrimaryLoaded,
+    onPrimaryPlay,
     onPrimaryProgress,
   ]);
 
