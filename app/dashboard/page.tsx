@@ -378,15 +378,15 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Badge */}
-                    {enrollment.progress === 100 ? (
-                      <Badge className="absolute top-3 right-3 bg-green-500 text-white border-0">
-                        <Trophy className="h-3 w-3 mr-1" />
-                        Hoàn thành
-                      </Badge>
-                    ) : enrollment.is_expired ? (
+                    {enrollment.is_expired ? (
                       <Badge className="absolute top-3 right-3 bg-red-600 text-white border-0">
                         <AlertTriangle className="h-3 w-3 mr-1" />
                         Hết hạn
+                      </Badge>
+                    ) : enrollment.progress === 100 ? (
+                      <Badge className="absolute top-3 right-3 bg-green-500 text-white border-0">
+                        <Trophy className="h-3 w-3 mr-1" />
+                        Hoàn thành
                       </Badge>
                     ) : enrollment.progress > 0 ? (
                       <Badge className="absolute top-3 right-3 bg-orange-500 text-white border-0">
@@ -395,15 +395,18 @@ export default function DashboardPage() {
                     ) : null}
 
                     {/* Duration tier badge */}
-                    {!enrollment.is_expired && enrollment.tier_label && (
-                      <Badge className="absolute top-3 left-3 bg-blue-600/90 text-white border-0 text-[10px]">
+                    {!enrollment.is_expired && (enrollment.tier_label || !enrollment.is_lifetime) && (
+                      <Badge
+                        className={`absolute top-3 left-3 border-0 text-[10px] text-white ${
+                          !enrollment.is_lifetime && (enrollment.days_remaining ?? 0) <= 7
+                            ? "bg-amber-600/90"
+                            : "bg-blue-600/90"
+                        }`}
+                      >
                         <Shield className="h-3 w-3 mr-1" />
                         {enrollment.is_lifetime
-                          ? 'Vĩnh viễn'
-                          : enrollment.days_remaining != null && enrollment.days_remaining <= 7
-                            ? `Còn ${enrollment.days_remaining} ngày`
-                            : enrollment.tier_label
-                        }
+                          ? "Vĩnh viễn"
+                          : `${enrollment.tier_label ? `${enrollment.tier_label} · ` : ""}còn ${enrollment.days_remaining ?? 0} ngày`}
                       </Badge>
                     )}
                   </div>
@@ -439,7 +442,7 @@ export default function DashboardPage() {
                           {formatDuration(enrollment.watched_duration)}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5" title="Ngày đăng ký">
                         <Calendar className="h-3.5 w-3.5" />
                         <span>
                           {new Date(enrollment.enrolled_at).toLocaleDateString(
@@ -448,12 +451,26 @@ export default function DashboardPage() {
                         </span>
                       </div>
                     </div>
+                    {enrollment.expires_at && (
+                      <p
+                        className={`text-xs ${
+                          enrollment.is_expired
+                            ? "text-red-600"
+                            : (enrollment.days_remaining ?? 0) <= 7
+                              ? "text-amber-600"
+                              : "text-muted-foreground"
+                        }`}
+                      >
+                        {enrollment.is_expired ? "Đã hết hạn ngày " : "Hạn học đến "}
+                        {new Date(enrollment.expires_at).toLocaleDateString("vi-VN")}
+                      </p>
+                    )}
 
                     {/* CTA Button */}
                     {enrollment.is_expired ? (
                       <Button asChild className="w-full bg-red-600 hover:bg-red-700">
                         <Link
-                          href={`/courses/${enrollment.course.slug || enrollment.course.id}`}
+                          href={`/courses/${enrollment.course.slug || enrollment.course.id}?renew=1`}
                         >
                           <AlertTriangle className="mr-2 h-4 w-4" />
                           Gia hạn khóa học
@@ -471,6 +488,17 @@ export default function DashboardPage() {
                         </Link>
                       </Button>
                     )}
+                    {!enrollment.is_expired &&
+                      !enrollment.is_lifetime &&
+                      (enrollment.days_remaining ?? 0) <= 7 && (
+                        <Button asChild variant="outline" className="w-full">
+                          <Link
+                            href={`/courses/${enrollment.course.slug || enrollment.course.id}?renew=1`}
+                          >
+                            Gia hạn sớm (cộng dồn thời gian còn lại)
+                          </Link>
+                        </Button>
+                      )}
                   </CardContent>
                 </MotionCard>
               ))}

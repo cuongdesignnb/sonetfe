@@ -38,6 +38,8 @@ interface CourseApiProduct {
   badge_text?: string | null;
   badge_color?: string | null;
   status?: string;
+  price_range?: [number, number];
+  duration_tiers?: { id: number }[];
 }
 
 interface EbookApiProduct {
@@ -64,6 +66,7 @@ interface Product {
   title: string;
   description: string;
   price: string | number;
+  price_prefix?: string;
   original_price?: string | number | null;
   thumbnail: string | null;
   category: {
@@ -114,11 +117,16 @@ function buildSaleLabel(
 }
 
 function mapCourseToProduct(course: CourseApiProduct): Product {
+  // Courses sold by duration packages: show the cheapest public package
+  // ("Từ 3.600.000 ₫") instead of the base course price.
+  const tiered = (course.duration_tiers?.length ?? 0) > 0 && Array.isArray(course.price_range);
+  const price = tiered ? course.price_range![0] : course.price;
   return {
     id: course.id,
     title: course.title,
     description: course.description,
-    price: course.price,
+    price,
+    price_prefix: tiered && course.price_range![0] !== course.price_range![1] ? "Từ " : undefined,
     original_price: course.original_price ?? null,
     thumbnail: resolveAssetUrl(course.thumbnail),
     category: course.category || { name: "Khóa học" },
@@ -126,7 +134,7 @@ function mapCourseToProduct(course: CourseApiProduct): Product {
     href: `/courses/${course.slug || course.id}`,
     features: extractCourseFeatures(course.marketing).slice(0, 3),
     status: course.status || "published",
-    sale_label: buildSaleLabel(course.original_price, course.price),
+    sale_label: buildSaleLabel(course.original_price, price),
     badge_text: course.badge_text ?? null,
     badge_color: course.badge_color ?? null,
     total_enrollments: course.total_enrollments ?? null,
@@ -387,7 +395,7 @@ export function FeaturedCourses() {
                   <span className="text-lg font-bold text-red-600 dark:text-red-400">
                     {Number(product.price) === 0
                       ? "MIỄN PHÍ"
-                      : formatPrice(Number(product.price))}
+                      : `${product.price_prefix ?? ""}${formatPrice(Number(product.price))}`}
                   </span>
                   {product.sale_label && (
                     <Badge className="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 border-0 text-xs font-semibold">

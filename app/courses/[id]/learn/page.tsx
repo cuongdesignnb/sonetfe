@@ -76,6 +76,13 @@ type CourseDetailResponse = {
     lessons?: Lesson[];
   };
   is_enrolled: boolean;
+  my_enrollment?: {
+    tier_label: string | null;
+    expires_at: string | null;
+    is_lifetime: boolean;
+    is_expired: boolean;
+    days_remaining: number | null;
+  } | null;
 };
 
 type LessonProgress = {
@@ -144,6 +151,8 @@ export default function CourseLearnPage() {
     new Set(),
   );
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [myEnrollment, setMyEnrollment] =
+    useState<CourseDetailResponse["my_enrollment"]>(null);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [premiumLessonTitle, setPremiumLessonTitle] = useState("");
   const [premiumLessonIndex, setPremiumLessonIndex] = useState<number | null>(
@@ -393,6 +402,7 @@ export default function CourseLearnPage() {
         if (cancelled) return;
         setCourse(courseJson.course);
         setIsEnrolled(courseJson.is_enrolled);
+        setMyEnrollment(courseJson.my_enrollment ?? null);
 
         if (!user) {
           return;
@@ -1086,6 +1096,30 @@ export default function CourseLearnPage() {
 
         {/* Main Content - Video Player */}
         <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
+          {myEnrollment &&
+            !myEnrollment.is_lifetime &&
+            myEnrollment.expires_at &&
+            (myEnrollment.is_expired || (myEnrollment.days_remaining ?? 0) <= 7) && (
+              <div
+                className={`flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 text-center text-sm ${
+                  myEnrollment.is_expired
+                    ? "bg-red-600 text-white"
+                    : "bg-amber-500 text-black"
+                }`}
+              >
+                <span>
+                  {myEnrollment.is_expired
+                    ? `Khóa học đã hết hạn ngày ${new Date(myEnrollment.expires_at).toLocaleDateString("vi-VN")}. Các bài học đã bị khóa.`
+                    : `Khóa học còn ${myEnrollment.days_remaining ?? 0} ngày (hết hạn ${new Date(myEnrollment.expires_at).toLocaleDateString("vi-VN")}).`}
+                </span>
+                <Link
+                  href={`/courses/${course?.slug || params.id}?renew=1`}
+                  className="font-bold underline underline-offset-2"
+                >
+                  {myEnrollment.is_expired ? "Gia hạn ngay" : "Gia hạn sớm"}
+                </Link>
+              </div>
+            )}
           {/* Video Area */}
           <div className="flex-1 min-h-0 bg-black">
             <div className="flex h-full items-center justify-center p-4 sm:p-6 lg:p-8">

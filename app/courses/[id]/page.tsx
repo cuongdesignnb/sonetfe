@@ -118,6 +118,19 @@ export default function CourseDetailPage() {
   // Selected section for chapter checkout
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
 
+  // Renewal: "?renew=1" (from the dashboard) or the "Gia hạn thêm" button
+  // shows the purchase form to a student who already has time-limited access.
+  const [renewMode, setRenewMode] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => {
+    if (searchParams.get("renew") === "1") {
+      setRenewMode(true);
+      setTimeout(() => {
+        document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" });
+      }, 800);
+    }
+  }, [searchParams]);
+
   // Parse section_id from URL search params
   useEffect(() => {
     const sectIdParam = searchParams.get("section_id");
@@ -164,7 +177,7 @@ export default function CourseDetailPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id, apiUrl, user?.id]);
+  }, [params.id, apiUrl, user?.id, reloadKey]);
 
   // Auto-checkout when returning from login with ?checkout=true
   const [autoCheckoutDone, setAutoCheckoutDone] = useState(false);
@@ -219,6 +232,11 @@ export default function CourseDetailPage() {
 
   const c = data.course;
 
+  // Time-limited (or expired) full-course access can be renewed; lifetime cannot.
+  const renewInfo =
+    data.my_enrollment && !data.my_enrollment.is_lifetime ? data.my_enrollment : null;
+  const showAsEnrolled = data.is_enrolled && !(renewMode && renewInfo);
+
   // Tier the student is actually buying. RegistrationSection pre-selects the
   // default tier on screen, so use the same default here — otherwise checkout
   // and voucher validation silently fell back to the plain course price.
@@ -237,7 +255,7 @@ export default function CourseDetailPage() {
     if (typeof sectionId === "number" && Number.isFinite(sectionId)) {
       setSelectedSectionId(sectionId);
     }
-    if (data?.is_enrolled) {
+    if (showAsEnrolled) {
       router.push(`/courses/${c.slug || params.id}/learn`);
       return;
     }
@@ -343,10 +361,15 @@ export default function CourseDetailPage() {
 
         setData((prev) => (prev ? { ...prev, is_enrolled: true } : prev));
         toast.success(
-          json?.discount_applied
-            ? "Đã đăng ký thành công với mã giảm giá!"
-            : "Đã đăng ký khóa học thành công!",
+          renewInfo
+            ? "Đã gia hạn khóa học thành công!"
+            : json?.discount_applied
+              ? "Đã đăng ký thành công với mã giảm giá!"
+              : "Đã đăng ký khóa học thành công!",
         );
+        setRenewMode(false);
+        // Reload to show the new expiry date.
+        setReloadKey((key) => key + 1);
         setAppliedVoucher(null);
         setVoucherCode("");
         return;
@@ -405,7 +428,9 @@ export default function CourseDetailPage() {
 
       <RegistrationSection
         course={c as CourseData}
-        isEnrolled={data.is_enrolled}
+        isEnrolled={showAsEnrolled}
+        renewInfo={renewInfo}
+        onRenewClick={() => setRenewMode(true)}
         onRegisterSuccess={(tierId) => {
           if (tierId) setSelectedTierId(tierId);
           handleCheckout(tierId);
