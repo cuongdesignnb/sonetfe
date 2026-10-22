@@ -43,7 +43,17 @@ type Course = {
   lessons_count?: number;
   enrolled_count?: number;
   duration?: string;
+  price_range?: [number, number];
+  duration_tiers?: { id: number }[];
 };
+
+// Courses sold by duration packages show the cheapest public package.
+function displayPrice(course: Course): { value: number; prefix: string } {
+  const tiered = (course.duration_tiers?.length ?? 0) > 0 && Array.isArray(course.price_range);
+  if (!tiered) return { value: Number(course.price), prefix: "" };
+  const [min, max] = course.price_range!;
+  return { value: Number(min), prefix: min !== max ? "Từ " : "" };
+}
 
 type Paginated<T> = {
   data: T[];
@@ -137,11 +147,11 @@ function CourseCard({ course, index }: { course: Course; index: number }) {
           {/* Price badge */}
           <div className="absolute top-3 right-3">
             <Badge
-              className={`${Number(course.price) === 0 ? "bg-green-500" : "bg-orange-500"} text-white border-0 shadow-lg`}
+              className={`${displayPrice(course).value === 0 ? "bg-green-500" : "bg-orange-500"} text-white border-0 shadow-lg`}
             >
-              {Number(course.price) === 0
+              {displayPrice(course).value === 0
                 ? "Miễn phí"
-                : formatPrice(Number(course.price))}
+                : `${displayPrice(course).prefix}${formatPrice(displayPrice(course).value)}`}
             </Badge>
           </div>
 

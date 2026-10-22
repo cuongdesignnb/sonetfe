@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatPrice } from "@/lib/utils";
-import type { CourseData, MarketingUrgency, CourseDurationTier } from "./types";
+import type { CourseData, MarketingUrgency, CourseDurationTier, MyEnrollment } from "./types";
 
 /* ────────── Types ────────── */
 
@@ -48,6 +48,9 @@ export type RegistrationSectionProps = {
   onSectionSelect?: (sectionId: number | null) => void;
   checkoutError?: string | null;
   checkoutLoading?: boolean;
+  /** Time-limited access of the viewer (active or expired); enables renewal UI. */
+  renewInfo?: MyEnrollment | null;
+  onRenewClick?: () => void;
 };
 
 type NoticeCard = {
@@ -141,6 +144,8 @@ export function RegistrationSection({
   onSectionSelect,
   checkoutError,
   checkoutLoading,
+  renewInfo = null,
+  onRenewClick,
 }: RegistrationSectionProps) {
   const ref = useRef<HTMLElement>(null);
   const isInView = useInView(ref, { once: true, amount: 0.15 });
@@ -192,11 +197,22 @@ export function RegistrationSection({
     onTierSelect?.(tierId);
   }
 
-  const title = currentSection
+  const renewDate = renewInfo?.expires_at
+    ? new Date(renewInfo.expires_at).toLocaleDateString("vi-VN")
+    : null;
+  const isRenewing = Boolean(renewInfo) && !isEnrolled && !currentSection;
+
+  const title = isRenewing
+    ? "Gia hạn khóa học"
+    : currentSection
     ? `Đăng ký chương lẻ: ${currentSection.title}`
     : "Đăng ký ngay để nhận ưu đãi";
 
-  const subtitle = currentSection
+  const subtitle = isRenewing
+    ? renewInfo?.is_expired
+      ? `Khóa học của bạn đã hết hạn ngày ${renewDate}. Chọn gói để tiếp tục học.`
+      : `Hạn học hiện tại đến ${renewDate} (còn ${renewInfo?.days_remaining ?? 0} ngày). Thời gian gia hạn được cộng dồn vào hạn hiện tại.`
+    : currentSection
     ? `Sở hữu riêng chương học này với đầy đủ nội dung bài học & hỗ trợ.`
     : (hasTiers
       ? `Chọn gói thời gian phù hợp với bạn`
@@ -494,9 +510,16 @@ export function RegistrationSection({
                       ? `Bạn đã sở hữu chương: ${currentSection?.title}` 
                       : "Bạn đã đăng ký khóa học thành công!"}
                   </p>
-                  <p className="mt-1 text-sm text-gray-400">
-                    Nhấn nút bên dưới để bắt đầu học ngay.
-                  </p>
+                  {!isSectionEnrolled && renewInfo && renewDate ? (
+                    <p className="mt-1 text-sm text-gray-300">
+                      {renewInfo.tier_label ? `Gói ${renewInfo.tier_label} · ` : ""}
+                      Hạn học đến <b>{renewDate}</b> (còn {renewInfo.days_remaining ?? 0} ngày)
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-gray-400">
+                      Nhấn nút bên dưới để bắt đầu học ngay.
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -506,6 +529,15 @@ export function RegistrationSection({
                   <Zap className="mr-2 inline-block h-5 w-5" />
                   VÀO HỌC NGAY
                 </button>
+                {!isSectionEnrolled && renewInfo && onRenewClick && (
+                  <button
+                    type="button"
+                    onClick={onRenewClick}
+                    className="w-full rounded-2xl border border-orange-500/40 px-6 py-3 text-sm font-bold text-orange-300 transition-colors hover:bg-orange-500/10"
+                  >
+                    Gia hạn thêm (cộng dồn thời gian còn lại)
+                  </button>
+                )}
               </div>
             ) : isLoggedIn ? (
               /* ── Already logged-in view: confirm info & checkout ── */

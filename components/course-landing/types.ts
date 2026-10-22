@@ -306,10 +306,20 @@ export type CourseData = {
   original_price?: string | number | null;
 };
 
+export type MyEnrollment = {
+  tier_label: string | null;
+  expires_at: string | null;
+  is_lifetime: boolean;
+  is_expired: boolean;
+  days_remaining: number | null;
+};
+
 export type CourseDetailResponse = {
   course: CourseData;
   is_enrolled: boolean;
   price_range?: [number, number];
+  /** The viewer's own full-course access (null when not bought). */
+  my_enrollment?: MyEnrollment | null;
 };
 
 /* ── Default nav items (auto-detected from rendered sections) */
